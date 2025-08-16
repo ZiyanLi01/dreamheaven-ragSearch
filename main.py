@@ -49,6 +49,7 @@ class ListingResult(BaseModel):
     address: Optional[str] = None
     bedrooms: Optional[int] = None
     bathrooms: Optional[int] = None
+    square_feet: Optional[int] = None
     garage_number: Optional[int] = None
     price: Optional[float] = None
     image_url: Optional[str] = None
@@ -129,6 +130,7 @@ async def search_similar_listings(
                 address,
                 bedrooms,
                 bathrooms,
+                square_feet,
                 garage_number,
                 CASE 
                     WHEN property_listing_type = 'sale' THEN price_for_sale
@@ -236,6 +238,7 @@ async def semantic_search(
                 address=listing.get("address"),
                 bedrooms=listing.get("bedrooms"),
                 bathrooms=listing.get("bathrooms"),
+                square_feet=listing.get("square_feet"),
                 garage_number=listing.get("garage_number"),
                 price=listing.get("price"),
                 image_url=listing.get("image_url"),
