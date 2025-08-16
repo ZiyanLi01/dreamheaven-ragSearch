@@ -6,6 +6,7 @@ A standalone FastAPI service for LLM-powered property search using RAG.
 import os
 import asyncio
 import logging
+import json
 from typing import List, Dict, Any, Optional
 from contextlib import asynccontextmanager
 
@@ -42,6 +43,7 @@ class SearchRequest(BaseModel):
     query: str = Field(..., description="Natural language description of dream home")
     limit: Optional[int] = Field(10, description="Number of results to return (default: 10)")
     offset: Optional[int] = Field(0, description="Number of results to skip for pagination (default: 0)")
+    reasons: Optional[bool] = Field(True, description="Whether to generate reasons for matches (default: True)")
 
 class ListingResult(BaseModel):
     id: str
@@ -54,11 +56,15 @@ class ListingResult(BaseModel):
     price: Optional[float] = None
     image_url: Optional[str] = None
     similarity_score: float = Field(..., description="Cosine similarity score (0-1)")
+    reason: Optional[str] = Field("", description="Generated reason for match")
 
 class SearchResponse(BaseModel):
-    results: List[ListingResult]
+    items: List[ListingResult]
     query: str
-    total_results: int
+    page: int
+    limit: int
+    has_more: bool
+    generation_error: Optional[bool] = Field(False, description="Whether generation failed")
 
 # Database Functions
 async def create_db_pool():
@@ -167,6 +173,131 @@ async def search_similar_listings(
         logger.error(f"Database search error: {e}")
         raise HTTPException(status_code=500, detail="Failed to search listings")
 
+# Generation Functions
+def truncate_text(text: str, max_length: int = 100) -> str:
+    """Truncate text to max_length characters"""
+    if not text:
+        return ""
+    return text[:max_length] + "..." if len(text) > max_length else text
+
+def build_property_summary(listing: Dict[str, Any]) -> str:
+    """Build a compact property summary for the generation prompt"""
+    summary_parts = []
+    
+    # Basic location info
+    if listing.get("address"):
+        address = truncate_text(listing["address"], 80)
+        summary_parts.append(f"Location: {address}")
+    
+    # Property details
+    if listing.get("bedrooms"):
+        summary_parts.append(f"{listing['bedrooms']} bed")
+    if listing.get("bathrooms"):
+        summary_parts.append(f"{listing['bathrooms']} bath")
+    if listing.get("square_feet"):
+        summary_parts.append(f"{listing['square_feet']} sqft")
+    if listing.get("garage_number"):
+        summary_parts.append(f"{listing['garage_number']} garage")
+    
+    # Price
+    if listing.get("price"):
+        summary_parts.append(f"${listing['price']:,.0f}")
+    
+    return " | ".join(summary_parts)
+
+async def generate_reasons(
+    query: str, 
+    listings: List[Dict[str, Any]]
+) -> Dict[str, str]:
+    """Generate reasons for why each listing matches the query"""
+    logger.info(f"generate_reasons called with query: '{query}' and {len(listings)} listings")
+    
+    if not listings:
+        logger.info("No listings provided, returning empty dict")
+        return {}
+    
+    try:
+        # Build compact property summaries
+        property_summaries = []
+        for listing in listings:
+            summary = build_property_summary(listing)
+            property_summaries.append(f"ID: {listing['id']} | {summary}")
+        
+        properties_text = "\n".join(property_summaries)
+        logger.info(f"Built property summaries: {properties_text}")
+        
+        # Create the prompt
+        system_prompt = "You are a helpful assistant that explains why each property matches the user's query. Respond strictly in minified JSON with no extra text."
+        
+        user_prompt = f"""User query: "{query}"
+
+Properties:
+{properties_text}
+
+Generate the top 3 reasons why each property matches the query. Return as JSON array with bullet points: [{{"id": "uuid", "reason": "• Reason 1\\n• Reason 2\\n• Reason 3"}}]"""
+
+        logger.info("Calling OpenAI for generation...")
+        
+        # Call OpenAI
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.3,
+            max_tokens=500,
+            response_format={"type": "json_object"}
+        )
+        
+        # Parse response
+        content = response.choices[0].message.content
+        logger.info(f"OpenAI response: {content}")
+        
+        if not content:
+            raise ValueError("Empty response from OpenAI")
+        
+        # Try to parse as JSON
+        try:
+            result = json.loads(content)
+            reasons = {}
+            
+            # Handle different possible response formats
+            if isinstance(result, dict):
+                if "reasons" in result:
+                    reasons_list = result["reasons"]
+                elif "result" in result:
+                    reasons_list = result["result"]
+                elif "results" in result:
+                    reasons_list = result["results"]
+                elif "properties" in result:
+                    reasons_list = result["properties"]
+                else:
+                    reasons_list = []
+            elif isinstance(result, list):
+                reasons_list = result
+            else:
+                reasons_list = []
+            
+            logger.info(f"Parsed reasons list: {reasons_list}")
+            
+            # Extract reasons by ID
+            for item in reasons_list:
+                if isinstance(item, dict) and "id" in item and "reason" in item:
+                    reasons[item["id"]] = item["reason"]
+            
+            logger.info(f"Final reasons dict: {reasons}")
+            return reasons
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse OpenAI response as JSON: {e}")
+            logger.error(f"Response content: {content}")
+            raise ValueError("Invalid JSON response from OpenAI")
+            
+    except Exception as e:
+        logger.error(f"Generation failed: {e}")
+        raise
+
 # FastAPI App Lifecycle
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -230,10 +361,31 @@ async def semantic_search(
             pool=pool
         )
         
-        # Convert results to response format
-        results = [
-            ListingResult(
-                id=str(listing["id"]),
+        # Initialize reasons and generation error flag
+        reasons = {}
+        generation_error = False
+        
+        # Generate reasons if requested
+        if request.reasons and similar_listings:
+            try:
+                logger.info("Generating reasons for matches...")
+                logger.info(f"Number of listings to process: {len(similar_listings)}")
+                reasons = await generate_reasons(request.query, similar_listings)
+                logger.info(f"Generated reasons: {reasons}")
+                logger.info(f"Generated reasons for {len(reasons)} listings")
+            except Exception as e:
+                logger.error(f"Reason generation failed: {e}")
+                generation_error = True
+                reasons = {}
+        
+        # Convert results to response format with reasons
+        results = []
+        for listing in similar_listings:
+            listing_id = str(listing["id"])
+            reason = reasons.get(listing_id, "")
+            
+            result = ListingResult(
+                id=listing_id,
                 title=listing.get("title"),
                 address=listing.get("address"),
                 bedrooms=listing.get("bedrooms"),
@@ -242,17 +394,20 @@ async def semantic_search(
                 garage_number=listing.get("garage_number"),
                 price=listing.get("price"),
                 image_url=listing.get("image_url"),
-                similarity_score=float(listing.get("similarity_score", 0))
+                similarity_score=float(listing.get("similarity_score", 0)),
+                reason=reason
             )
-            for listing in similar_listings
-        ]
+            results.append(result)
         
         logger.info(f"Found {len(results)} similar listings")
         
         return SearchResponse(
-            results=results,
+            items=results,
             query=request.query,
-            total_results=len(results)
+            page=request.offset // request.limit + 1,
+            limit=request.limit,
+            has_more=len(results) == request.limit,
+            generation_error=generation_error
         )
         
     except Exception as e:

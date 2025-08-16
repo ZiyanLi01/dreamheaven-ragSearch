@@ -1,14 +1,17 @@
 # DreamHeaven RAG API
 
-A standalone FastAPI service for LLM-powered property search using Retrieval-Augmented Generation (RAG). This service provides semantic search over real estate listings using OpenAI embeddings and PostgreSQL with pgvector.
+A standalone FastAPI service for LLM-powered property search using Retrieval-Augmented Generation (RAG). This service provides semantic search over real estate listings using OpenAI embeddings and PostgreSQL with pgvector, enhanced with AI-generated explanations for search matches.
 
 ## Features
 
 - **Semantic Search**: Natural language property search using OpenAI embeddings
 - **Vector Similarity**: Fast similarity search using pgvector and cosine similarity
+- **AI-Generated Reasons**: Intelligent explanations for why each property matches the query
 - **RESTful API**: Clean FastAPI endpoints with automatic documentation
 - **Batch Embedding**: One-time embedding generation for existing listings
 - **Docker Support**: Containerized deployment with health checks
+- **Pagination**: Support for large result sets with limit/offset
+- **Feature Flags**: Optional generation with `reasons` parameter
 
 ## Prerequisites
 
@@ -93,7 +96,7 @@ docker run -p 8001:8001 --env-file .env dreamheaven-rag
 GET /health
 ```
 
-### Semantic Search
+### Semantic Search with AI Generation
 ```bash
 POST /ai-search
 Content-Type: application/json
@@ -101,28 +104,34 @@ Content-Type: application/json
 {
   "query": "modern 3-bedroom condo in San Francisco with ocean view",
   "limit": 10,
-  "offset": 0
+  "offset": 0,
+  "reasons": true
 }
 ```
 
 **Response:**
 ```json
 {
-  "results": [
+  "items": [
     {
       "id": "uuid-here",
       "title": "Modern Condo with Ocean Views",
       "address": "123 Ocean St",
       "bedrooms": 3,
       "bathrooms": 2,
+      "square_feet": 1500,
       "garage_number": 1,
       "price": 850000,
       "image_url": "https://example.com/image.jpg",
-      "similarity_score": 0.85
+      "similarity_score": 0.85,
+      "reason": "• Modern amenities and contemporary design\n• Stunning ocean views from multiple rooms\n• Prime San Francisco location with easy access to downtown"
     }
   ],
   "query": "modern 3-bedroom condo in San Francisco with ocean view",
-  "total_results": 5
+  "page": 1,
+  "limit": 10,
+  "has_more": true,
+  "generation_error": false
 }
 ```
 
@@ -132,6 +141,49 @@ GET /stats
 ```
 
 Returns information about embedding coverage and total listings.
+
+## AI Generation Features
+
+### Reason Generation
+
+The API can generate intelligent explanations for why each property matches the user's query:
+
+- **Model**: Uses GPT-4o-mini for fast, cost-effective generation
+- **Format**: Top 3 bullet-pointed reasons
+- **Content**: Focuses on key matching factors (location, features, price)
+- **Fallback**: Returns empty reasons if generation fails
+
+### Generation Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `reasons` | boolean | true | Enable/disable AI reason generation |
+
+### Generation Examples
+
+**With AI reasons (default):**
+```bash
+curl -X POST "http://localhost:8001/ai-search" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "luxury apartment", "limit": 2, "reasons": true}'
+```
+
+**Without AI reasons (faster):**
+```bash
+curl -X POST "http://localhost:8001/ai-search" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "luxury apartment", "limit": 2, "reasons": false}'
+```
+
+### Error Handling
+
+If generation fails, the API continues to work with empty reasons:
+```json
+{
+  "items": [...],
+  "generation_error": true
+}
+```
 
 ## Pagination
 
@@ -188,11 +240,11 @@ HOST=0.0.0.0
 curl http://localhost:8001/health
 ```
 
-### Test Semantic Search
+### Test Semantic Search with Generation
 ```bash
 curl -X POST "http://localhost:8001/ai-search" \
   -H "Content-Type: application/json" \
-  -d '{"query": "luxury 4-bedroom house with pool in Beverly Hills", "limit": 10, "offset": 0}'
+  -d '{"query": "luxury 4-bedroom house with pool in Beverly Hills", "limit": 10, "offset": 0, "reasons": true}'
 ```
 
 ### Test Statistics
@@ -211,7 +263,8 @@ curl http://localhost:8001/stats
                               ▼
                        ┌──────────────────┐
                        │   OpenAI API     │
-                       │   (Embeddings)   │
+                       │ (Embeddings +    │
+                       │  Generation)     │
                        └──────────────────┘
 ```
 
@@ -236,10 +289,11 @@ docker-compose up --build
 ### Production Considerations
 
 1. **Rate Limiting**: Implement rate limiting for the search endpoint
-2. **Caching**: Add Redis for embedding cache
+2. **Caching**: Add Redis for embedding and generation cache
 3. **Monitoring**: Add logging and metrics collection
 4. **Security**: Configure CORS properly for production
 5. **Scaling**: Use multiple instances behind a load balancer
+6. **Cost Management**: Monitor OpenAI API usage for generation
 
 ## Troubleshooting
 
@@ -249,6 +303,7 @@ docker-compose up --build
 2. **OpenAI rate limits**: Reduce batch size in `embed_listings.py`
 3. **Database connection**: Check DATABASE_URL format and credentials
 4. **No embeddings**: Run `embed_listings.py` to generate embeddings
+5. **Generation errors**: Check OpenAI API key and quota limits
 
 ### Logs
 
