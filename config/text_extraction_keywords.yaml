@@ -1,0 +1,139 @@
+# ETL #2 Configuration: Text Extraction Keywords
+# Maps natural language phrases to semantic cues
+
+version: "1.0.0"
+description: "Keyword-based semantic cue extraction from title and description"
+
+# Positive keyword mappings (phrase -> cue)
+positive_keywords:
+  # Facing and orientation
+  "south-facing": "south_facing"
+  "south facing": "south_facing"
+  "north-facing": "north_facing"
+  "north facing": "north_facing"
+  "east-facing": "east_facing"
+  "east facing": "east_facing"
+  "west-facing": "west_facing"
+  "west facing": "west_facing"
+  "sunny": "good_light"
+  "bright": "good_light"
+  "natural light": "good_light"
+  "floor-to-ceiling windows": "good_light"
+  "floor to ceiling windows": "good_light"
+  "large windows": "good_light"
+
+  # Location and transit
+  "steps to": "walk_to_transit"
+  "walking distance": "walk_to_transit"
+  "near metro": "walk_to_transit"
+  "near subway": "walk_to_transit"
+  "near bart": "walk_to_transit"
+  "close to transit": "walk_to_transit"
+  "convenient location": "convenient_location"
+  "central location": "central_location"
+  "downtown": "downtown"
+  "waterfront": "waterfront"
+  "hills": "hills"
+  "park": "near_park"
+
+  # Quiet and peaceful
+  "quiet": "quiet_block"
+  "peaceful": "quiet_block"
+  "tranquil": "quiet_block"
+  "not facing street": "quiet_block"
+  "back unit": "quiet_block"
+  "garden unit": "quiet_block"
+
+  # Renovation and updates
+  "renovated": "renovated_recent"
+  "updated": "renovated_recent"
+  "modern": "modern"
+  "newly renovated": "renovated_recent"
+  "freshly renovated": "renovated_recent"
+  "brand new": "renovated_recent"
+  "updated kitchen": "renovated_recent"
+  "new kitchen": "renovated_recent"
+  "remodeled": "renovated_recent"
+
+  # Outdoor features
+  "balcony": "balcony"
+  "patio": "balcony"
+  "terrace": "balcony"
+  "deck": "balcony"
+  "garden": "garden"
+  "yard": "has_yard"
+  "outdoor space": "outdoor_space"
+
+  # Parking and transportation
+  "parking": "parking_available"
+  "garage": "parking_available"
+  "assigned parking": "parking_available"
+  "ev charging": "ev_charger"
+  "electric vehicle": "ev_charger"
+  "car charging": "ev_charger"
+
+  # Pet policies
+  "pet friendly": "pet_friendly"
+  "pets allowed": "pet_friendly"
+  "dog friendly": "pet_friendly"
+  "cat friendly": "pet_friendly"
+
+  # Luxury and premium features
+  "luxury": "luxury_property"
+  "premium": "luxury_property"
+  "high-end": "luxury_property"
+  "penthouse": "luxury_property"
+  "villa": "luxury_property"
+  "doorman": "doorman"
+  "concierge": "concierge"
+  "gym": "gym"
+  "fitness center": "gym"
+  "pool": "pool"
+  "swimming pool": "pool"
+  "spa": "spa"
+  "hot tub": "spa"
+
+  # Safety and security
+  "secure": "secure_building"
+  "security": "secure_building"
+  "gated": "secure_building"
+  "safe": "safe_area"
+  "safe neighborhood": "safe_area"
+
+  # School and family
+  "good schools": "good_school"
+  "excellent schools": "good_school"
+  "family friendly": "family_friendly"
+  "kid friendly": "family_friendly"
+
+  # Size and space
+  "spacious": "spacious_property"
+  "large": "spacious_property"
+  "roomy": "spacious_property"
+  "compact": "compact_property"
+  "cozy": "compact_property"
+  "efficient": "compact_property"
+
+# Negative keyword mappings (phrase -> negative cue)
+negative_keywords:
+  "no parking": "no_parking"
+  "street parking only": "no_parking"
+  "no pets": "no_pets"
+  "no dogs": "no_pets"
+  "no cats": "no_pets"
+  "no balcony": "no_balcony"
+  "no outdoor space": "no_outdoor_space"
+  "no gym": "no_gym"
+  "no pool": "no_pool"
+
+# Context-specific rules
+context_rules:
+  # If "renovated" appears with a year, check if it's recent
+  - pattern: r"renovated.*(20[2-9][0-9])"
+    condition: "int(match.group(1)) >= 2020"
+    cue: "renovated_recent"
+    
+  # If "steps to" appears with a distance, check if it's walkable
+  - pattern: r"(\d+)\s*(blocks?|minutes?)\s*to"
+    condition: "int(match.group(1)) <= 5"
+    cue: "walk_to_transit"

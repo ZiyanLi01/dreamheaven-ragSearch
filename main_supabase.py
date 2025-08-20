@@ -24,13 +24,13 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")  # Service role key for admin operations
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")  # Service role key for admin operations
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PORT = int(os.getenv("PORT", 8001))
 HOST = os.getenv("HOST", "0.0.0.0")
 
 if not SUPABASE_URL or not SUPABASE_KEY or not OPENAI_API_KEY:
-    raise ValueError("SUPABASE_URL, SUPABASE_KEY, and OPENAI_API_KEY must be set in environment variables")
+    raise ValueError("SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and OPENAI_API_KEY must be set in environment variables")
 
 # Global clients
 supabase: Optional[Client] = None

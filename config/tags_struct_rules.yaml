@@ -1,0 +1,99 @@
+# ETL #1 Configuration: Structured Tags Rules
+# Maps structured field conditions to canonical tags
+
+rule_version: "1.0.0"
+description: "Rule-based tag generation from structured listing fields"
+
+# Global thresholds (configurable for A/B testing)
+thresholds:
+  distance_to_metro_m: 600  # meters
+  school_rating: 8          # out of 10
+  crime_index: 0.3          # normalized 0-1
+  year_renovated_recent: 2020
+
+# Rules mapping conditions to tags
+rules:
+  # Facing direction rules
+  - name: "south_facing"
+    condition: "facing == 'S'"
+    tag: "south_facing"
+    evidence_template: "Property faces south"
+    
+  - name: "north_facing"
+    condition: "facing == 'N'"
+    tag: "north_facing"
+    evidence_template: "Property faces north"
+    
+  - name: "east_facing"
+    condition: "facing == 'E'"
+    tag: "east_facing"
+    evidence_template: "Property faces east"
+    
+  - name: "west_facing"
+    condition: "facing == 'W'"
+    tag: "west_facing"
+    evidence_template: "Property faces west"
+
+  # Distance to transit rules
+  - name: "walk_to_metro"
+    condition: "distance_to_metro_m <= 600"
+    tag: "walk_to_metro"
+    evidence_template: "Within {distance_to_metro_m}m of metro station"
+
+  # Parking rules
+  - name: "parking_available"
+    condition: "has_parking_lot == true OR garage_number > 0"
+    tag: "parking_available"
+    evidence_template: "Parking available (lot: {has_parking_lot}, garage: {garage_number})"
+
+  # Renovation rules
+  - name: "renovated_recent"
+    condition: "year_renovated >= 2020"
+    tag: "renovated_recent"
+    evidence_template: "Renovated in {year_renovated}"
+
+  # School quality rules
+  - name: "good_school"
+    condition: "school_rating >= 8"
+    tag: "good_school"
+    evidence_template: "School rating: {school_rating}/10"
+
+  # Safety rules
+  - name: "safe_area"
+    condition: "crime_index <= 0.3"
+    tag: "safe_area"
+    evidence_template: "Low crime index: {crime_index}"
+
+  # Property features
+  - name: "has_yard"
+    condition: "has_yard == true"
+    tag: "has_yard"
+    evidence_template: "Property has yard"
+
+  # Shopping convenience
+  - name: "shopping_convenient"
+    condition: "shopping_idx >= 80"
+    tag: "shopping_convenient"
+    evidence_template: "High shopping index: {shopping_idx}"
+
+  # Grocery convenience
+  - name: "grocery_convenient"
+    condition: "grocery_idx >= 85"
+    tag: "grocery_convenient"
+    evidence_template: "High grocery index: {grocery_idx}"
+
+  # Property type specific
+  - name: "luxury_property"
+    condition: "property_type in ['Penthouse', 'Villa'] AND square_feet > 2000"
+    tag: "luxury_property"
+    evidence_template: "Luxury {property_type} with {square_feet} sqft"
+
+  - name: "compact_property"
+    condition: "square_feet <= 800"
+    tag: "compact_property"
+    evidence_template: "Compact {square_feet} sqft property"
+
+  - name: "spacious_property"
+    condition: "square_feet >= 2500"
+    tag: "spacious_property"
+    evidence_template: "Spacious {square_feet} sqft property"
