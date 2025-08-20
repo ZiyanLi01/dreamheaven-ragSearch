@@ -2,6 +2,26 @@
 
 A standalone FastAPI service for LLM-powered property search using Retrieval-Augmented Generation (RAG). This service provides semantic search over real estate listings using OpenAI embeddings and PostgreSQL with pgvector, enhanced with AI-generated explanations for search matches.
 
+## Project Structure
+
+```
+dreamheaven-rag/
+├── main.py                 # Main FastAPI application with PostgreSQL connection
+├── main_supabase.py        # Alternative FastAPI app using Supabase client
+├── embed_listings.py       # Script to generate embeddings for existing listings
+├── test_rag_api.py         # Test script for API endpoints
+├── setup.sh                # Automated setup script for environment
+├── requirements.txt        # Python dependencies
+├── Dockerfile              # Docker configuration for containerization
+├── docker-compose.yml      # Docker Compose configuration
+├── add_vector_column.sql   # SQL script to add vector column to listings table
+├── env.example             # Environment variables template
+├── .gitignore              # Git ignore rules
+├── README.md               # This documentation file
+├── server.log              # Application log file
+└── venv/                   # Python virtual environment (not in git)
+```
+
 ## Features
 
 - **Semantic Search**: Natural language property search using OpenAI embeddings
@@ -157,173 +177,4 @@ The API can generate intelligent explanations for why each property matches the 
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `reasons` | boolean | true | Enable/disable AI reason generation |
-
-### Generation Examples
-
-**With AI reasons (default):**
-```bash
-curl -X POST "http://localhost:8001/ai-search" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "luxury apartment", "limit": 2, "reasons": true}'
-```
-
-**Without AI reasons (faster):**
-```bash
-curl -X POST "http://localhost:8001/ai-search" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "luxury apartment", "limit": 2, "reasons": false}'
-```
-
-### Error Handling
-
-If generation fails, the API continues to work with empty reasons:
-```json
-{
-  "items": [...],
-  "generation_error": true
-}
-```
-
-## Pagination
-
-The AI search endpoint supports pagination for better performance and user experience:
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `limit` | integer | 10 | Number of results to return |
-| `offset` | integer | 0 | Number of results to skip |
-
-### Pagination Examples
-
-**First page (10 results):**
-```bash
-curl -X POST "http://localhost:8001/ai-search" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "apartment in downtown", "limit": 10, "offset": 0}'
-```
-
-**Load more (next 5 results):**
-```bash
-curl -X POST "http://localhost:8001/ai-search" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "apartment in downtown", "limit": 5, "offset": 10}'
-```
-
-## Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `DATABASE_URL` | PostgreSQL connection string | Yes |
-| `OPENAI_API_KEY` | OpenAI API key | Yes |
-| `PORT` | Service port (default: 8001) | No |
-| `HOST` | Service host (default: 0.0.0.0) | No |
-
-## Example Environment File
-
-```bash
-# Database Configuration
-DATABASE_URL=postgresql://postgres.your-ref:password@aws-0-us-east-1.pooler.supabase.com:6543/postgres
-
-# OpenAI Configuration
-OPENAI_API_KEY=sk-your-openai-api-key
-
-# Service Configuration
-PORT=8001
-HOST=0.0.0.0
-```
-
-## Testing the Service
-
-### Test Health Check
-```bash
-curl http://localhost:8001/health
-```
-
-### Test Semantic Search with Generation
-```bash
-curl -X POST "http://localhost:8001/ai-search" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "luxury 4-bedroom house with pool in Beverly Hills", "limit": 10, "offset": 0, "reasons": true}'
-```
-
-### Test Statistics
-```bash
-curl http://localhost:8001/stats
-```
-
-## Architecture
-
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Frontend      │───▶│   RAG API        │───▶│   Supabase      │
-│   (React)       │    │   (FastAPI)      │    │   (PostgreSQL)  │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-                              │
-                              ▼
-                       ┌──────────────────┐
-                       │   OpenAI API     │
-                       │ (Embeddings +    │
-                       │  Generation)     │
-                       └──────────────────┘
-```
-
-## Deployment Options
-
-### Local Development
-```bash
-python main.py
-```
-
-### Docker Standalone
-```bash
-docker build -t dreamheaven-rag .
-docker run -p 8001:8001 --env-file .env dreamheaven-rag
-```
-
-### Docker Compose
-```bash
-docker-compose up --build
-```
-
-### Production Considerations
-
-1. **Rate Limiting**: Implement rate limiting for the search endpoint
-2. **Caching**: Add Redis for embedding and generation cache
-3. **Monitoring**: Add logging and metrics collection
-4. **Security**: Configure CORS properly for production
-5. **Scaling**: Use multiple instances behind a load balancer
-6. **Cost Management**: Monitor OpenAI API usage for generation
-
-## Troubleshooting
-
-### Common Issues
-
-1. **pgvector not found**: Ensure the vector extension is installed in PostgreSQL
-2. **OpenAI rate limits**: Reduce batch size in `embed_listings.py`
-3. **Database connection**: Check DATABASE_URL format and credentials
-4. **No embeddings**: Run `embed_listings.py` to generate embeddings
-5. **Generation errors**: Check OpenAI API key and quota limits
-
-### Logs
-
-Check application logs for detailed error messages:
-```bash
-# Development
-python main.py
-
-# Docker
-docker-compose logs dreamheaven-rag
-```
-
-## Contributing
-
-1. Follow the existing code style
-2. Add tests for new features
-3. Update documentation as needed
-4. Ensure Docker builds successfully
-
-## License
-
-MIT License - see LICENSE file for details.
-
+| `reasons`
