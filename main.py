@@ -46,10 +46,12 @@ class SearchIntent:
     # Hard filters
     city: Optional[str] = None
     state: Optional[str] = None
+    neighborhood: Optional[str] = None
     max_price_sale: Optional[float] = None
     max_price_rent: Optional[float] = None
     min_beds: Optional[int] = None
     min_baths: Optional[int] = None
+    min_sqft: Optional[int] = None
     garage_required: Optional[bool] = None
     property_type: Optional[str] = None
     
@@ -64,6 +66,22 @@ class SearchIntent:
     mountain_view: bool = False
     quiet: bool = False
     family_friendly: bool = False
+    featured: bool = False
+    near_grocery: bool = False
+    near_shopping: bool = False
+    safe_area: bool = False
+    walkable: bool = False
+    dining_options: bool = False
+    short_term_rental: bool = False
+    pet_friendly: bool = False
+
+@dataclass
+class CriteriaMatch:
+    """Represents a single criteria match with evidence"""
+    criteria_name: str
+    matched: bool
+    evidence: str
+    weight: float = 1.0
 
 # Intent extraction patterns
 INTENT_PATTERNS = {
@@ -71,6 +89,11 @@ INTENT_PATTERNS = {
     'city_state': [
         r'\b(san francisco|sf|new york|nyc|los angeles|la|chicago|miami|seattle|boston|austin|denver|portland|atlanta|phoenix|las vegas|houston|dallas|philadelphia|washington dc|dc)\b',
         r'\b(california|ca|new york|ny|texas|tx|florida|fl|illinois|il|washington|wa|massachusetts|ma|colorado|co|oregon|or|georgia|ga|arizona|az|nevada|nv|pennsylvania|pa|virginia|va)\b'
+    ],
+    
+    # Neighborhoods (specific areas within cities)
+    'neighborhood': [
+        r'\b(nob hill|mission district|marina|pacific heights|russian hill|presidio heights|hayes valley|soma|financial district|castro|noe valley|bernal heights|glen park|inner sunset|outer sunset|richmond|sunset|twin peaks|downtown|uptown|midtown|west village|east village|chelsea|soho|tribeca|brooklyn heights|williamsburg|park slope|astoria|long island city|queens|manhattan|brooklyn|bronx|staten island)\b'
     ],
     
     # Price ranges
@@ -91,8 +114,18 @@ INTENT_PATTERNS = {
         r'\b([1-5])\s*bed\b'
     ],
     'baths': [
-        r'\b([1-4])\s*(?:bath|bathroom)\b',
-        r'\b([1-4])\s*bath\b'
+        r'\b([1-4])\s*(?:bath|bathroom)s?\b',
+        r'\b([1-4])\s*bath\b',
+        r'\b([1-4])-bath\b',
+        r'\b([1-4])-bathroom\b'
+    ],
+    
+    # Square footage requirements
+    'min_sqft': [
+        r'\bat least\s+([0-9,]+)\s*square feet?\b',
+        r'\bminimum\s+([0-9,]+)\s*sq ft\b',
+        r'\b([0-9,]+)\s*square feet?\s+or more\b',
+        r'\b([0-9,]+)\s*sq ft\s+minimum\b'
     ],
     
     # Property features
@@ -103,6 +136,53 @@ INTENT_PATTERNS = {
     ],
     'property_type': [
         r'\b(condo|apartment|house|townhouse|single family|multi family|duplex|loft|studio)\b'
+    ],
+    
+    # Featured/premium properties
+    'featured': [
+        r'\bfeatured\b',
+        r'\bpremium\b',
+        r'\bhighlighted\b',
+        r'\bspecial\b',
+        r'\bexclusive\b'
+    ],
+    
+    # Proximity to amenities
+    'near_grocery': [
+        r'\bclose to grocery\b',
+        r'\bnear grocery\b',
+        r'\bwalking distance to grocery\b',
+        r'\bgrocery stores\b',
+        r'\bsupermarket\b'
+    ],
+    'near_shopping': [
+        r'\bclose to shopping\b',
+        r'\bnear shopping\b',
+        r'\bwalking distance to shopping\b',
+        r'\bshopping\b',
+        r'\bretail\b',
+        r'\bstores\b'
+    ],
+    
+    # Safety and walkability
+    'safe_area': [
+        r'\bsafe\s+areas?\b',
+        r'\bsafe\s+neighborhoods?\b',
+        r'\bsafe\s+communities?\b',
+        r'\bsecure\s+areas?\b',
+        r'\b(?:low|good)\s+crime\s+(?:areas?|neighborhoods?)\b'
+    ],
+    'walkable': [
+        r'\bwalk(?:ing)?\s+(?:distance|to|from)\b',
+        r'\bwalkable\b',
+        r'\b(?:near|close\s+to)\s+(?:restaurants?|cafes?|shops?|stores?)\b',
+        r'\b(?:restaurants?|cafes?|shops?|stores?)\s+(?:nearby|within\s+walking\s+distance)\b'
+    ],
+    'dining_options': [
+        r'\brestaurants?\b',
+        r'\bcafes?\b',
+        r'\bdining\s+options?\b',
+        r'\bfood\s+(?:options?|choices?)\b'
     ],
     
     # Soft preferences
@@ -164,6 +244,23 @@ INTENT_PATTERNS = {
         r'\bkid friendly\b',
         r'\bgood for family\b',
         r'\bsafe neighborhood\b'
+    ],
+    
+    # Rental type and pet policies
+    'short_term_rental': [
+        r'\bshort\s*[-]?\s*term\s+rental\b',
+        r'\bshort\s*[-]?\s*term\s+lease\b',
+        r'\btemporary\s+rental\b',
+        r'\bmonth\s*to\s*month\b',
+        r'\bflexible\s+lease\b'
+    ],
+    'pet_friendly': [
+        r'\ballows?\s+pets?\b',
+        r'\bpet\s+friendly\b',
+        r'\bpets?\s+allowed\b',
+        r'\bpets?\s+welcome\b',
+        r'\bdog\s+friendly\b',
+        r'\bcat\s+friendly\b'
     ]
 }
 
@@ -186,6 +283,13 @@ def extract_search_intent(query: str) -> SearchIntent:
             # Otherwise treat as city
             else:
                 intent.city = match
+    
+    # Extract neighborhood
+    for pattern in INTENT_PATTERNS['neighborhood']:
+        matches = re.findall(pattern, query_lower)
+        if matches:
+            intent.neighborhood = matches[0]
+            logger.info(f"🔍 Extracted neighborhood: {intent.neighborhood}")
     
     # Extract price ranges
     for pattern in INTENT_PATTERNS['price_sale']:
@@ -214,6 +318,14 @@ def extract_search_intent(query: str) -> SearchIntent:
         matches = re.findall(pattern, query_lower)
         if matches:
             intent.min_baths = int(matches[0])
+            logger.info(f"🔍 Extracted min_baths: {intent.min_baths}")
+    
+    # Extract minimum square footage
+    for pattern in INTENT_PATTERNS['min_sqft']:
+        matches = re.findall(pattern, query_lower)
+        if matches:
+            intent.min_sqft = int(matches[0].replace(',', ''))
+            logger.info(f"🔍 Extracted min_sqft: {intent.min_sqft}")
     
     # Extract property type
     for pattern in INTENT_PATTERNS['property_type']:
@@ -233,6 +345,14 @@ def extract_search_intent(query: str) -> SearchIntent:
     intent.mountain_view = any(re.search(pattern, query_lower) for pattern in INTENT_PATTERNS['mountain_view'])
     intent.quiet = any(re.search(pattern, query_lower) for pattern in INTENT_PATTERNS['quiet'])
     intent.family_friendly = any(re.search(pattern, query_lower) for pattern in INTENT_PATTERNS['family_friendly'])
+    intent.featured = any(re.search(pattern, query_lower) for pattern in INTENT_PATTERNS['featured'])
+    intent.near_grocery = any(re.search(pattern, query_lower) for pattern in INTENT_PATTERNS['near_grocery'])
+    intent.near_shopping = any(re.search(pattern, query_lower) for pattern in INTENT_PATTERNS['near_shopping'])
+    intent.safe_area = any(re.search(pattern, query_lower) for pattern in INTENT_PATTERNS['safe_area'])
+    intent.walkable = any(re.search(pattern, query_lower) for pattern in INTENT_PATTERNS['walkable'])
+    intent.dining_options = any(re.search(pattern, query_lower) for pattern in INTENT_PATTERNS['dining_options'])
+    intent.short_term_rental = any(re.search(pattern, query_lower) for pattern in INTENT_PATTERNS['short_term_rental'])
+    intent.pet_friendly = any(re.search(pattern, query_lower) for pattern in INTENT_PATTERNS['pet_friendly'])
     
     return intent
 
@@ -252,6 +372,12 @@ def build_exact_filter_conditions(intent: SearchIntent) -> Tuple[str, List[Any]]
         conditions.append(f"LOWER(state) = ${param_count}")
         params.append(intent.state.lower())
         param_count += 1
+    
+    # Neighborhood filtering (check neighborhood column and address)
+    if intent.neighborhood:
+        conditions.append(f"(LOWER(neighborhood) = ${param_count} OR LOWER(address) LIKE ${param_count + 1})")
+        params.extend([intent.neighborhood.lower(), f"%{intent.neighborhood.lower()}%"])
+        param_count += 2
     
     # Exact price filtering (no flexibility)
     if intent.max_price_sale:
@@ -275,15 +401,38 @@ def build_exact_filter_conditions(intent: SearchIntent) -> Tuple[str, List[Any]]
         params.append(intent.min_baths)
         param_count += 1
     
+    # Minimum square footage filtering
+    if intent.min_sqft:
+        conditions.append(f"square_feet >= ${param_count}")
+        params.append(intent.min_sqft)
+        param_count += 1
+    
     # Exact garage requirement
     if intent.garage_required:
         conditions.append("(garage_number > 0 OR has_parking_lot = true)")
     
-    # Exact property type matching
+    # Property type matching (flexible - check property_type column and title)
     if intent.property_type:
-        conditions.append(f"LOWER(property_type) = ${param_count}")
-        params.append(intent.property_type.lower())
-        param_count += 1
+        # Map user intent to database values
+        property_mapping = {
+            'apartment': ['apartment', 'condo', 'unit', 'penthouse'],
+            'condo': ['condo', 'apartment', 'unit'],
+            'house': ['house', 'home', 'single family'],
+            'townhouse': ['townhouse', 'town house'],
+            'studio': ['studio', 'loft']
+        }
+        
+        mapped_types = property_mapping.get(intent.property_type.lower(), [intent.property_type.lower()])
+        type_conditions = []
+        
+        for prop_type in mapped_types:
+            type_conditions.append(f"(LOWER(property_type) = '{prop_type}' OR LOWER(title) LIKE '%{prop_type}%')")
+        
+        conditions.append(f"({' OR '.join(type_conditions)})")
+    
+    # Featured property filter
+    if intent.featured:
+        conditions.append("is_featured = true")
     
     where_clause = " AND ".join(conditions)
     return where_clause, params
@@ -456,6 +605,59 @@ def calculate_reranking_score(similarity_score: float, listing: Dict[str, Any], 
             if any(area in address_lower for area in family_areas):
                 bonus += 0.04
     
+    if intent.featured and listing.get('is_featured'):
+        bonus += 0.06
+    
+    if intent.near_grocery:
+        # Use grocery_idx as proxy for grocery proximity
+        grocery_idx = listing.get('grocery_idx')
+        if grocery_idx and grocery_idx >= 7:
+            bonus += 0.05
+        else:
+            # Fallback: assume near grocery if in urban areas
+            urban_areas = ['downtown', 'financial district', 'soma', 'mission', 'hayes valley']
+            address_lower = listing.get('address', '').lower()
+            if any(area in address_lower for area in urban_areas):
+                bonus += 0.05
+    
+    if intent.near_shopping:
+        # Use shopping_idx as proxy for shopping proximity
+        shopping_idx = listing.get('shopping_idx')
+        if shopping_idx and shopping_idx >= 7:
+            bonus += 0.05
+        else:
+            # Fallback: assume near shopping if in urban areas
+            urban_areas = ['downtown', 'financial district', 'soma', 'mission', 'hayes valley']
+            address_lower = listing.get('address', '').lower()
+            if any(area in address_lower for area in urban_areas):
+                bonus += 0.05
+    
+    if intent.safe_area:
+        # Use crime_index as proxy for safety (lower crime = safer)
+        crime_index = listing.get('crime_index')
+        if crime_index and crime_index <= 3:
+            bonus += 0.06
+        else:
+            # Fallback: assume safe if in good neighborhoods
+            safe_areas = ['pacific heights', 'presidio heights', 'marina', 'russian hill', 'nob hill']
+            address_lower = listing.get('address', '').lower()
+            if any(area in address_lower for area in safe_areas):
+                bonus += 0.06
+    
+    if intent.walkable:
+        # Assume walkable if in urban areas with good walkability
+        walkable_areas = ['downtown', 'financial district', 'soma', 'mission', 'hayes valley', 'arts district']
+        address_lower = listing.get('address', '').lower()
+        if any(area in address_lower for area in walkable_areas):
+            bonus += 0.05
+    
+    if intent.dining_options:
+        # Assume good dining options if in urban areas
+        dining_areas = ['downtown', 'financial district', 'soma', 'mission', 'hayes valley', 'arts district']
+        address_lower = listing.get('address', '').lower()
+        if any(area in address_lower for area in dining_areas):
+            bonus += 0.04
+    
     # Final score: 85% similarity + 15% bonus
     final_score = 0.85 * base_score + 0.15 * bonus
     return min(final_score, 1.0)  # Cap at 1.0
@@ -463,8 +665,51 @@ def calculate_reranking_score(similarity_score: float, listing: Dict[str, Any], 
 def generate_template_reason(listing: Dict[str, Any], intent: SearchIntent) -> str:
     """Generate template-based recommendation reason"""
     reasons = []
+    search_criteria = []
     
-    # Basic match reasons
+    # Build search criteria list (what user asked for)
+    if intent.min_beds:
+        search_criteria.append(f"{intent.min_beds}+ bedrooms")
+    if intent.min_baths:
+        search_criteria.append(f"{intent.min_baths}+ bathrooms")
+    if intent.max_price_sale:
+        search_criteria.append(f"under ${intent.max_price_sale:,.0f}")
+    if intent.max_price_rent:
+        search_criteria.append(f"rent under ${intent.max_price_rent:,.0f}")
+    if intent.city:
+        search_criteria.append(f"in {intent.city}")
+    if intent.neighborhood:
+        search_criteria.append(f"in {intent.neighborhood}")
+    if intent.min_sqft:
+        search_criteria.append(f"at least {intent.min_sqft:,} square feet")
+    if intent.property_type:
+        search_criteria.append(f"{intent.property_type}")
+    if intent.garage_required:
+        search_criteria.append("with parking")
+    if intent.walk_to_metro:
+        search_criteria.append("near metro")
+    if intent.good_schools:
+        search_criteria.append("near good schools")
+    if intent.ocean_view:
+        search_criteria.append("with ocean view")
+    if intent.modern:
+        search_criteria.append("modern design")
+    if intent.renovated:
+        search_criteria.append("recently renovated")
+    if intent.featured:
+        search_criteria.append("featured")
+    if intent.near_grocery:
+        search_criteria.append("near grocery stores")
+    if intent.near_shopping:
+        search_criteria.append("near shopping")
+    if intent.safe_area:
+        search_criteria.append("in safe area")
+    if intent.walkable:
+        search_criteria.append("walkable")
+    if intent.dining_options:
+        search_criteria.append("with dining options")
+    
+    # Build actual match reasons (what the listing has)
     if intent.min_beds and listing.get('bedrooms', 0) >= intent.min_beds:
         reasons.append(f"{listing['bedrooms']} bedrooms")
     
@@ -477,8 +722,19 @@ def generate_template_reason(listing: Dict[str, Any], intent: SearchIntent) -> s
     if intent.max_price_rent and listing.get('price_per_month', 0) <= intent.max_price_rent:
         reasons.append(f"rent under ${intent.max_price_rent:,.0f}")
     
-    if intent.city:
+    if intent.city and listing.get('city', '').lower() == intent.city.lower():
         reasons.append(f"in {intent.city}")
+    
+    if intent.neighborhood:
+        # Check if listing matches neighborhood
+        listing_neighborhood = listing.get('neighborhood', '').lower()
+        listing_address = listing.get('address', '').lower()
+        if (intent.neighborhood.lower() in listing_neighborhood or 
+            intent.neighborhood.lower() in listing_address):
+            reasons.append(f"in {intent.neighborhood}")
+    
+    if intent.min_sqft and listing.get('square_feet', 0) >= intent.min_sqft:
+        reasons.append(f"{listing['square_feet']} square feet")
     
     # Feature matches
     if intent.garage_required and (listing.get('garage_number', 0) > 0 or listing.get('has_parking_lot')):
@@ -495,7 +751,7 @@ def generate_template_reason(listing: Dict[str, Any], intent: SearchIntent) -> s
         # Fallback: assume good schools if in good neighborhoods
         good_neighborhoods = ['pacific heights', 'marina', 'nob hill', 'russian hill', 'presidio heights']
         address_lower = listing.get('address', '').lower()
-        if any(neighborhood in address_lower for neighborhood in good_neighborhoods):
+        if any(area in address_lower for area in good_neighborhoods):
             reasons.append("near good schools")
     
     if intent.ocean_view:
@@ -517,10 +773,32 @@ def generate_template_reason(listing: Dict[str, Any], intent: SearchIntent) -> s
         if any(word in title_lower for word in ['renovated', 'remodeled', 'updated', 'newly']):
             reasons.append("recently renovated")
     
-    if not reasons:
-        reasons.append("matches your search criteria")
+    if intent.featured and listing.get('is_featured'):
+        reasons.append("featured property")
     
-    return f"Matches your query for {' and '.join(reasons)}."
+    if intent.near_grocery:
+        # Fallback: assume near grocery if in urban areas
+        urban_areas = ['downtown', 'financial district', 'soma', 'mission', 'hayes valley']
+        address_lower = listing.get('address', '').lower()
+        if any(area in address_lower for area in urban_areas):
+            reasons.append("near grocery stores")
+    
+    if intent.near_shopping:
+        # Fallback: assume near shopping if in urban areas
+        urban_areas = ['downtown', 'financial district', 'soma', 'mission', 'hayes valley']
+        address_lower = listing.get('address', '').lower()
+        if any(area in address_lower for area in urban_areas):
+            reasons.append("near shopping")
+    
+    # Construct the reason
+    if search_criteria and reasons:
+        return f"Matches your search for {' and '.join(search_criteria)}. This property has {' and '.join(reasons)}."
+    elif search_criteria:
+        return f"Matches your search for {' and '.join(search_criteria)}."
+    elif reasons:
+        return f"This property has {' and '.join(reasons)}."
+    else:
+        return "Matches your search criteria."
 
 def generate_search_suggestions(intent: SearchIntent) -> str:
     """Generate helpful suggestions when no results are found"""
@@ -1111,17 +1389,18 @@ async def vector_search_candidates(
             price_for_sale, price_per_month,
             has_yard, school_rating, crime_index, facing,
             shopping_idx, grocery_idx, tags, embedding_text,
+            city, state, country, neighborhood,
+            description, amenities, host_id, is_available, is_featured,
+            latitude, longitude, rating, review_count,
+            property_listing_type, year_built, year_renovated,
+            created_at, updated_at,
             CASE 
                 WHEN property_listing_type = 'sale' THEN price_for_sale
                 WHEN property_listing_type = 'both' THEN price_per_month
                 WHEN property_listing_type = 'rent' THEN price_per_month
                 ELSE COALESCE(price_per_month, price_for_sale)
             END as price,
-            CASE 
-                WHEN images IS NOT NULL AND jsonb_array_length(images) > 0 
-                THEN images->0 
-                ELSE NULL 
-            END as image_url,
+            images,
             embedding <=> $1::vector as distance,
             1 - (embedding <=> $1::vector) as similarity_score
         FROM listings_v2 
@@ -1203,6 +1482,23 @@ async def generate_enhanced_reasons(
     if not listings:
         return {}
     
+    # Check if listings already have rule-based reasons
+    reasons = {}
+    has_rule_based_reasons = False
+    
+    for listing in listings:
+        listing_id = str(listing['id'])
+        if 'reason' in listing:
+            reasons[listing_id] = listing['reason']
+            has_rule_based_reasons = True
+            logger.info(f"🔍 Preserving rule-based reason for {listing_id}: {listing['reason']}")
+    
+    # If we have rule-based reasons, return them instead of generating new ones
+    if has_rule_based_reasons:
+        logger.info("Using existing rule-based reasons instead of generating new ones")
+        return reasons
+    
+    # Otherwise, generate new reasons
     try:
         # Try LLM generation first
         reasons = await generate_llm_reasons(query, listings, intent)
@@ -1336,7 +1632,7 @@ def truncate_text(text: str, max_length: int = 100) -> str:
         return ""
     return text[:max_length] + "..." if len(text) > max_length else text
 
-# Enhanced Search Pipeline
+# Enhanced Search Pipeline with Hybrid Approach
 async def enhanced_semantic_search(
     query: str,
     intent: SearchIntent,
@@ -1344,72 +1640,136 @@ async def enhanced_semantic_search(
     offset: int = 0,
     pool: asyncpg.Pool = None
 ) -> List[Dict[str, Any]]:
-    """Complete enhanced search pipeline with intelligent filtering"""
+    """Complete enhanced search pipeline with hybrid rule-based + semantic approach"""
     try:
         logger.info(f"Starting enhanced search for query: {query}")
         
-        # Step 1: Try exact matching first
-        logger.info("Step 1: Trying exact matching...")
+        # Step 1: Extract detailed criteria for rule-based scoring
+        logger.info("Step 1: Extracting detailed criteria...")
+        criteria_list = extract_detailed_criteria(query, intent)
+        logger.info(f"Extracted {len(criteria_list)} criteria: {[c.criteria_name for c in criteria_list]}")
+        
+        # Step 2: Get initial candidate listings
+        logger.info("Step 2: Getting initial candidates...")
         exact_listings = await get_exact_matches(intent, pool)
-        logger.info(f"Exact matching returned {len(exact_listings)} candidates")
+        logger.info(f"Initial candidates: {len(exact_listings)} listings")
         
-        # If we have exact matches, return only those (no relaxed matches)
-        if exact_listings:
-            logger.info(f"Found {len(exact_listings)} exact matches, returning only exact matches")
-            
-            # Generate reasons for the exact matches
-            logger.info("Generating enhanced reasons for matches...")
-            reasons = await generate_enhanced_reasons(query, exact_listings, intent)
-            
-            # Return exact matches with reasons
-            for listing in exact_listings:
-                listing['similarity_score'] = 1.0  # Perfect match score
-                listing['reason'] = reasons.get(listing['id'], f"This property meets all your criteria: {intent.min_beds}+ bedrooms in {intent.city}.")
-            
-            logger.info(f"Returning {len(exact_listings)} exact matches only")
-            return exact_listings
+        # Step 3: Choose search method based on 60% threshold
+        search_method = choose_search_method(criteria_list, exact_listings)
+        logger.info(f"Step 3: Chosen search method: {search_method}")
+        
+        if search_method == "rule_based":
+            logger.info("Using RULE-BASED scoring approach")
+            return await rule_based_search(exact_listings, criteria_list, limit, query)
         else:
-            logger.info("No exact matches found, trying progressive relaxation...")
-        
-        # Progressive relaxation when no exact matches
-        if not exact_listings:
-            
-            # Step 2: Try progressive relaxation
-            logger.info("Step 2: Applying progressive relaxation...")
-            relaxed_listings = await get_progressive_relaxed_matches(intent, pool)
-            logger.info(f"Progressive relaxation returned {len(relaxed_listings)} candidates")
-            
-            if not relaxed_listings:
-                logger.info("No listings match any criteria, even with progressive relaxation")
-                # Return empty list - the API will handle the response
-                return []
-            
-            # Step 3: Generate query embedding
-            logger.info("Step 3: Generating query embedding...")
-            query_embedding = await get_embedding(query)
-            
-            # Step 4: Vector search on relaxed candidates
-            logger.info("Step 4: Performing vector search...")
-            candidate_ids = [listing['id'] for listing in relaxed_listings]
-            vector_results = await vector_search_candidates(query_embedding, candidate_ids, pool, top_k=100)
-            logger.info(f"Vector search returned {len(vector_results)} candidates")
-            
-            # Step 5: Reranking with relaxed match indicators
-            logger.info("Step 5: Reranking candidates...")
-            reranked_listings = await rerank_listings(vector_results, intent, limit=limit)
-            logger.info(f"Reranking returned {len(reranked_listings)} final results")
-            
-            # Add relaxed match indicators to reasons
-            for listing in reranked_listings:
-                if 'reason' not in listing:
-                    listing['reason'] = "Similar property found with relaxed criteria."
-                listing['reason'] = f"[Relaxed Match] {listing['reason']}"
-            
-            return reranked_listings
+            logger.info("Using SEMANTIC search approach")
+            return await semantic_search_fallback(query, intent, exact_listings, limit, pool)
         
     except Exception as e:
         logger.error(f"Enhanced search failed: {e}")
         raise
+
+async def rule_based_search(
+    listings: List[Dict[str, Any]], 
+    criteria_list: List[CriteriaMatch], 
+    limit: int, 
+    query: str
+) -> List[Dict[str, Any]]:
+    """Perform rule-based scoring and ranking"""
+    logger.info("Starting rule-based search...")
+    
+    # Calculate scores for all listings
+    scored_listings = []
+    for listing in listings:
+        score, matched_criteria, unmatched_criteria = calculate_rule_based_score(listing, criteria_list)
+        
+        # Create detailed reason
+        reason = generate_rule_based_reason(matched_criteria, unmatched_criteria, score)
+        
+        scored_listings.append({
+            **listing,
+            'similarity_score': score,
+            'reason': reason,
+            'matched_criteria': matched_criteria,
+            'unmatched_criteria': unmatched_criteria
+        })
+    
+    # Sort by score (highest first) and limit results
+    scored_listings.sort(key=lambda x: x['similarity_score'], reverse=True)
+    top_listings = scored_listings[:limit]
+    
+    top_scores = [f"{l.get('title', 'Unknown')}: {l['similarity_score']:.1%}" for l in top_listings[:3]]
+    logger.info(f"Rule-based search completed. Top scores: {top_scores}")
+    
+    return top_listings
+
+async def semantic_search_fallback(
+    query: str,
+    intent: SearchIntent,
+    initial_listings: List[Dict[str, Any]],
+    limit: int,
+    pool: asyncpg.Pool
+) -> List[Dict[str, Any]]:
+    """Fallback to semantic search when rule-based criteria aren't met"""
+    logger.info("Starting semantic search fallback...")
+    
+    # If we have initial listings, use them; otherwise try progressive relaxation
+    if initial_listings:
+        listings = initial_listings
+        logger.info(f"Using {len(listings)} initial candidates for semantic search")
+    else:
+        logger.info("No initial candidates, trying progressive relaxation...")
+        listings = await get_progressive_relaxed_matches(intent, pool)
+        logger.info(f"Progressive relaxation returned {len(listings)} candidates")
+        
+        if not listings:
+            logger.info("No listings match any criteria, even with progressive relaxation")
+            return []
+    
+    # Generate query embedding
+    logger.info("Generating query embedding...")
+    query_embedding = await get_embedding(query)
+    
+    # Vector search on candidates
+    logger.info("Performing vector search...")
+    candidate_ids = [listing['id'] for listing in listings]
+    vector_results = await vector_search_candidates(query_embedding, candidate_ids, pool, top_k=100)
+    logger.info(f"Vector search returned {len(vector_results)} candidates")
+    
+    # Reranking
+    logger.info("Reranking candidates...")
+    reranked_listings = await rerank_listings(vector_results, intent, limit=limit)
+    logger.info(f"Reranking returned {len(reranked_listings)} final results")
+    
+    # Generate reasons
+    logger.info("Generating enhanced reasons...")
+    reasons = await generate_enhanced_reasons(query, reranked_listings, intent)
+    
+    # Add reasons to listings
+    for listing in reranked_listings:
+        listing['reason'] = reasons.get(listing['id'], f"Semantic match based on overall similarity.")
+        if not initial_listings:  # If we used progressive relaxation
+            listing['reason'] = f"[Relaxed Match] {listing['reason']}"
+    
+    logger.info("Semantic search fallback completed")
+    return reranked_listings
+
+def generate_rule_based_reason(matched_criteria: List[str], unmatched_criteria: List[str], score: float) -> str:
+    """Generate a clear reason based on rule-based scoring"""
+    if score >= 0.8:
+        if len(matched_criteria) == len(matched_criteria) + len(unmatched_criteria):
+            return f"Perfect match! This property meets all {len(matched_criteria)} criteria: {', '.join(matched_criteria)}."
+        else:
+            return f"Excellent match ({score:.0%})! Meets {len(matched_criteria)} out of {len(matched_criteria) + len(unmatched_criteria)} criteria: {', '.join(matched_criteria)}."
+    
+    elif score >= 0.6:
+        return f"Good match ({score:.0%})! Meets {len(matched_criteria)} out of {len(matched_criteria) + len(unmatched_criteria)} criteria: {', '.join(matched_criteria)}."
+    
+    elif score >= 0.4:
+        return f"Partial match ({score:.0%})! Meets {len(matched_criteria)} out of {len(matched_criteria) + len(unmatched_criteria)} criteria: {', '.join(matched_criteria)}."
+    
+    else:
+        return f"Limited match ({score:.0%})! Only meets {len(matched_criteria)} out of {len(matched_criteria) + len(unmatched_criteria)} criteria: {', '.join(matched_criteria)}."
 
 # FastAPI App Lifecycle
 @asynccontextmanager
@@ -1488,15 +1848,40 @@ async def semantic_search(
         reasons = {}
         generation_error = False
         
-        if request.reasons and similar_listings:
-            try:
-                logger.info("Generating enhanced reasons for matches...")
-                reasons = await generate_enhanced_reasons(request.query, similar_listings, intent)
-                logger.info(f"Generated reasons for {len(reasons)} listings")
-            except Exception as e:
-                logger.error(f"Reason generation failed: {e}")
-                generation_error = True
-                reasons = {}
+        logger.info(f"🔍 Step 3: Generate reasons - request.reasons={request.reasons}, similar_listings count={len(similar_listings) if similar_listings else 0}")
+        
+        if similar_listings:
+            # Check if listings already have reasons (from rule-based search or semantic fallback)
+            has_existing_reasons = any('reason' in listing for listing in similar_listings)
+            
+            if has_existing_reasons:
+                # Use existing reasons (rule-based or semantic)
+                logger.info("Using existing reasons from search pipeline...")
+                for listing in similar_listings:
+                    listing_id = str(listing['id'])
+                    if 'reason' in listing:
+                        reasons[listing_id] = listing['reason']
+                        logger.info(f"🔍 Existing reason for {listing_id}: {listing['reason']}")
+            elif request.reasons:
+                try:
+                    logger.info("Generating enhanced reasons for matches...")
+                    reasons = await generate_enhanced_reasons(request.query, similar_listings, intent)
+                    logger.info(f"Generated reasons for {len(reasons)} listings")
+                except Exception as e:
+                    logger.error(f"Reason generation failed: {e}")
+                    generation_error = True
+                    reasons = {}
+            else:
+                # Generate template reasons when LLM is disabled
+                logger.info("Generating template reasons for matches...")
+                for listing in similar_listings:
+                    listing_id = str(listing['id'])
+                    template_reason = generate_template_reason(listing, intent)
+                    reasons[listing_id] = template_reason
+                    logger.info(f"Template reason for {listing_id}: {template_reason}")
+                logger.info(f"Generated template reasons for {len(reasons)} listings")
+        else:
+            logger.info("No similar listings found, skipping reason generation")
         
         # Step 4: Convert to response format
         results = []
@@ -1542,6 +1927,7 @@ async def semantic_search(
             for listing in similar_listings:
                 listing_id = str(listing["id"])
                 reason = reasons.get(listing_id, "")
+                logger.info(f"🔍 Reason for {listing_id}: '{reason}' (reasons dict has {len(reasons)} items)")
                 
                 # Convert data types to match expected format
                 images_data = listing.get("images")
@@ -1638,6 +2024,326 @@ async def get_stats(pool: asyncpg.Pool = Depends(get_db_connection)):
     except Exception as e:
         logger.error(f"Stats query failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to get statistics")
+
+# Hybrid Approach: Rule-Based Scoring Functions
+
+def extract_detailed_criteria(query: str, intent: SearchIntent) -> List[CriteriaMatch]:
+    """Extract detailed criteria from query and intent for rule-based scoring"""
+    criteria = []
+    
+    # Location criteria
+    if intent.city:
+        criteria.append(CriteriaMatch(
+            criteria_name="location_match",
+            matched=True,  # Will be checked against listing data
+            evidence=f"Query requests location: {intent.city}",
+            weight=1.0
+        ))
+    
+    # Safety criteria
+    if intent.safe_area:
+        criteria.append(CriteriaMatch(
+            criteria_name="safe_area",
+            matched=True,
+            evidence="Query mentions safe areas",
+            weight=1.0
+        ))
+    
+    # Walkability criteria
+    if intent.walkable:
+        criteria.append(CriteriaMatch(
+            criteria_name="walkable",
+            matched=True,
+            evidence="Query mentions walkable areas",
+            weight=1.0
+        ))
+    
+    # Dining options criteria
+    if intent.dining_options:
+        criteria.append(CriteriaMatch(
+            criteria_name="dining_options",
+            matched=True,
+            evidence="Query mentions restaurants/cafes",
+            weight=1.0
+        ))
+    
+    # Property type criteria
+    if intent.property_type:
+        criteria.append(CriteriaMatch(
+            criteria_name="property_type",
+            matched=True,
+            evidence=f"Query requests {intent.property_type}",
+            weight=1.0
+        ))
+    
+    # Bedroom criteria
+    if intent.min_beds:
+        criteria.append(CriteriaMatch(
+            criteria_name="bedrooms",
+            matched=True,
+            evidence=f"Query requests {intent.min_beds}+ bedrooms",
+            weight=1.0
+        ))
+    
+    # Bathroom criteria
+    if intent.min_baths:
+        criteria.append(CriteriaMatch(
+            criteria_name="bathrooms",
+            matched=True,
+            evidence=f"Query requests {intent.min_baths}+ bathrooms",
+            weight=1.0
+        ))
+    
+    # Price criteria
+    if intent.max_price_sale:
+        criteria.append(CriteriaMatch(
+            criteria_name="price_sale",
+            matched=True,
+            evidence=f"Query requests under ${intent.max_price_sale:,}",
+            weight=1.0
+        ))
+    
+    if intent.max_price_rent:
+        criteria.append(CriteriaMatch(
+            criteria_name="price_rent",
+            matched=True,
+            evidence=f"Query requests rent under ${intent.max_price_rent:,}",
+            weight=1.0
+        ))
+    
+    # Square footage criteria
+    if intent.min_sqft:
+        criteria.append(CriteriaMatch(
+            criteria_name="square_feet",
+            matched=True,
+            evidence=f"Query requests at least {intent.min_sqft:,} sq ft",
+            weight=1.0
+        ))
+    
+    # Neighborhood criteria
+    if intent.neighborhood:
+        criteria.append(CriteriaMatch(
+            criteria_name="neighborhood",
+            matched=True,
+            evidence=f"Query requests {intent.neighborhood}",
+            weight=1.0
+        ))
+    
+    # Featured criteria
+    if intent.featured:
+        criteria.append(CriteriaMatch(
+            criteria_name="featured",
+            matched=True,
+            evidence="Query requests featured properties",
+            weight=1.0
+        ))
+    
+    # Proximity criteria
+    if intent.near_grocery:
+        criteria.append(CriteriaMatch(
+            criteria_name="near_grocery",
+            matched=True,
+            evidence="Query mentions grocery proximity",
+            weight=1.0
+        ))
+    
+    if intent.near_shopping:
+        criteria.append(CriteriaMatch(
+            criteria_name="near_shopping",
+            matched=True,
+            evidence="Query mentions shopping proximity",
+            weight=1.0
+        ))
+    
+    # Rental type criteria
+    if intent.short_term_rental:
+        criteria.append(CriteriaMatch(
+            criteria_name="short_term_rental",
+            matched=True,
+            evidence="Query requests short-term rental",
+            weight=1.0
+        ))
+    
+    # Pet policy criteria
+    if intent.pet_friendly:
+        criteria.append(CriteriaMatch(
+            criteria_name="pet_friendly",
+            matched=True,
+            evidence="Query requests pet-friendly property",
+            weight=1.0
+        ))
+    
+    return criteria
+
+def check_criteria_against_listing(listing: Dict[str, Any], criteria: CriteriaMatch) -> bool:
+    """Check if a listing matches a specific criteria"""
+    try:
+        if criteria.criteria_name == "location_match":
+            # Check if listing city matches intent city
+            listing_city = listing.get('city', '').lower()
+            return listing_city == criteria.evidence.split(': ')[1].lower()
+        
+        elif criteria.criteria_name == "safe_area":
+            # Check crime index or neighborhood safety
+            crime_index = listing.get('crime_index')
+            if crime_index is not None:
+                return crime_index < 50  # Lower crime index = safer
+            # Fallback: check if neighborhood is known safe
+            safe_neighborhoods = ['pacific heights', 'presidio heights', 'marina', 'nob hill']
+            neighborhood = listing.get('neighborhood', '').lower()
+            return any(safe in neighborhood for safe in safe_neighborhoods)
+        
+        elif criteria.criteria_name == "walkable":
+            # Check if in urban area or has good transit scores
+            # Most San Francisco neighborhoods are walkable
+            urban_areas = ['downtown', 'soma', 'mission', 'hayes valley', 'castro', 'pacific heights', 'marina', 'nob hill', 'park', 'russian hill', 'presidio heights', 'waterfront', 'hills', 'plaza', 'arts district', 'historic district']
+            neighborhood = listing.get('neighborhood', '').lower()
+            return any(urban in neighborhood for urban in urban_areas)
+        
+        elif criteria.criteria_name == "dining_options":
+            # Check if in area with dining options
+            # Most San Francisco neighborhoods have dining options
+            dining_areas = ['downtown', 'soma', 'mission', 'hayes valley', 'castro', 'north beach', 'pacific heights', 'marina', 'nob hill', 'park', 'russian hill', 'presidio heights', 'waterfront', 'hills', 'plaza', 'arts district', 'historic district']
+            neighborhood = listing.get('neighborhood', '').lower()
+            return any(dining in neighborhood for dining in dining_areas)
+        
+        elif criteria.criteria_name == "property_type":
+            # Check property type match
+            listing_type = listing.get('property_type', '').lower()
+            title = listing.get('title', '').lower()
+            requested_type = criteria.evidence.split('requests ')[1].lower()
+            
+            # Property type mapping
+            type_mapping = {
+                'apartment': ['apartment', 'condo', 'loft', 'studio'],
+                'house': ['house', 'single family', 'townhouse'],
+                'condo': ['condo', 'apartment'],
+                'studio': ['studio', 'loft']
+            }
+            
+            if requested_type in type_mapping:
+                return any(t in listing_type or t in title for t in type_mapping[requested_type])
+            return requested_type in listing_type or requested_type in title
+        
+        elif criteria.criteria_name == "bedrooms":
+            # Check bedroom count
+            listing_beds = listing.get('bedrooms', 0)
+            required_beds = int(criteria.evidence.split('requests ')[1].split('+')[0])
+            return listing_beds >= required_beds
+        
+        elif criteria.criteria_name == "bathrooms":
+            # Check bathroom count
+            listing_baths = listing.get('bathrooms', 0)
+            required_baths = int(criteria.evidence.split('requests ')[1].split('+')[0])
+            return listing_baths >= required_baths
+        
+        elif criteria.criteria_name == "price_sale":
+            # Check sale price
+            listing_price = listing.get('price_for_sale')
+            if listing_price is None:
+                return False
+            max_price = float(criteria.evidence.split('$')[1].split(',')[0].replace(',', ''))
+            return listing_price <= max_price
+        
+        elif criteria.criteria_name == "price_rent":
+            # Check rent price
+            listing_price = listing.get('price_per_month')
+            if listing_price is None:
+                return False
+            max_price = float(criteria.evidence.split('$')[1].split(',')[0].replace(',', ''))
+            return listing_price <= max_price
+        
+        elif criteria.criteria_name == "square_feet":
+            # Check square footage
+            listing_sqft = listing.get('square_feet')
+            if listing_sqft is None:
+                return False
+            min_sqft = int(criteria.evidence.split('at least ')[1].split(',')[0].replace(',', ''))
+            return listing_sqft >= min_sqft
+        
+        elif criteria.criteria_name == "neighborhood":
+            # Check neighborhood match
+            listing_neighborhood = listing.get('neighborhood', '').lower()
+            requested_neighborhood = criteria.evidence.split('requests ')[1].lower()
+            return requested_neighborhood in listing_neighborhood
+        
+        elif criteria.criteria_name == "featured":
+            # Check if property is featured
+            return listing.get('is_featured', False)
+        
+        elif criteria.criteria_name == "near_grocery":
+            # Check grocery proximity
+            grocery_idx = listing.get('grocery_idx')
+            if grocery_idx is not None:
+                return grocery_idx > 50  # Higher index = better grocery access
+            # Fallback: assume urban areas have grocery access
+            urban_areas = ['downtown', 'soma', 'mission', 'hayes valley']
+            neighborhood = listing.get('neighborhood', '').lower()
+            return any(urban in neighborhood for urban in urban_areas)
+        
+        elif criteria.criteria_name == "near_shopping":
+            # Check shopping proximity
+            shopping_idx = listing.get('shopping_idx')
+            if shopping_idx is not None:
+                return shopping_idx > 50  # Higher index = better shopping access
+            # Fallback: assume urban areas have shopping access
+            urban_areas = ['downtown', 'soma', 'mission', 'hayes valley']
+            neighborhood = listing.get('neighborhood', '').lower()
+            return any(urban in neighborhood for urban in urban_areas)
+        
+        elif criteria.criteria_name == "short_term_rental":
+            # Check if property allows short-term rentals
+            # For now, assume most properties can be short-term rentals
+            # In a real system, this would check a specific field like 'allows_short_term'
+            return True  # Default to True since we don't have this data
+        
+        elif criteria.criteria_name == "pet_friendly":
+            # Check if property allows pets
+            # For now, assume most properties allow pets
+            # In a real system, this would check a specific field like 'pet_friendly'
+            return True  # Default to True since we don't have this data
+        
+        return False
+        
+    except Exception as e:
+        logger.warning(f"Error checking criteria {criteria.criteria_name}: {e}")
+        return False
+
+def calculate_rule_based_score(listing: Dict[str, Any], criteria_list: List[CriteriaMatch]) -> Tuple[float, List[str], List[str]]:
+    """Calculate rule-based score based on criteria matches"""
+    if not criteria_list:
+        return 0.0, [], []
+    
+    matched_criteria = []
+    unmatched_criteria = []
+    total_weight = 0
+    matched_weight = 0
+    
+    for criteria in criteria_list:
+        total_weight += criteria.weight
+        if check_criteria_against_listing(listing, criteria):
+            matched_criteria.append(criteria.criteria_name)
+            matched_weight += criteria.weight
+        else:
+            unmatched_criteria.append(criteria.criteria_name)
+    
+    # Calculate percentage score
+    score = matched_weight / total_weight if total_weight > 0 else 0.0
+    
+    return score, matched_criteria, unmatched_criteria
+
+def choose_search_method(criteria_list: List[CriteriaMatch], listings: List[Dict[str, Any]]) -> str:
+    """Choose between rule-based and semantic search based on 60% threshold"""
+    if not criteria_list or not listings:
+        return "semantic_search"
+    
+    # Check if any listing meets 60%+ criteria
+    for listing in listings:
+        score, _, _ = calculate_rule_based_score(listing, criteria_list)
+        if score >= 0.6:  # 60% threshold
+            return "rule_based"
+    
+    return "semantic_search"
 
 if __name__ == "__main__":
     import uvicorn
