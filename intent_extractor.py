@@ -95,6 +95,14 @@ class IntentExtractor:
                 r'\b([1-4])-bathroom\b'
             ],
             
+            # Square footage
+            'sqft': [
+                r'\b(?:at least|minimum|with at least)\s+([0-9,]+)\s*(?:sq\s*ft|square\s*feet|square\s*foot)\b',
+                r'\b([0-9,]+)\s*(?:sq\s*ft|square\s*feet|square\s*foot)\s*(?:or more|minimum|at least)\b',
+                r'\b(?:minimum|at least)\s+([0-9,]+)\s*(?:sq\s*ft|square\s*feet|square\s*foot)\b',
+                r'\b([0-9,]+)\+\s*(?:sq\s*ft|square\s*feet|square\s*foot)\b'
+            ],
+            
             # Property features
             'garage': [
                 r'\bgarage\b',
@@ -102,7 +110,7 @@ class IntentExtractor:
                 r'\bcar space\b'
             ],
             'property_type': [
-                r'\b(condo|apartment|house|townhouse|single family|multi family|duplex|loft|studio)\b'
+                r'\b(condo|apartment|apartments|house|houses|townhouse|townhouses|single family|multi family|duplex|duplexes|loft|lofts|studio|studios)\b'
             ],
             
             # Soft preferences
@@ -292,11 +300,32 @@ class IntentExtractor:
                 intent.min_baths = int(matches[0])
                 logger.info(f"🔍 Extracted min_baths: {intent.min_baths}")
         
+        # Extract square footage
+        for pattern in self.intent_patterns['sqft']:
+            matches = re.findall(pattern, query_lower)
+            if matches:
+                intent.min_sqft = int(matches[0].replace(',', ''))
+                logger.info(f"🔍 Extracted min_sqft: {intent.min_sqft}")
+                break
+        
         # Extract property type
         for pattern in self.intent_patterns['property_type']:
             matches = re.findall(pattern, query_lower)
             if matches:
-                intent.property_type = matches[0]
+                property_type = matches[0]
+                # Map plural forms to singular forms
+                property_type_mapping = {
+                    'condos': 'condo',
+                    'apartments': 'apartment',
+                    'houses': 'house',
+                    'townhouses': 'townhouse',
+                    'duplexes': 'duplex',
+                    'lofts': 'loft',
+                    'studios': 'studio'
+                }
+                intent.property_type = property_type_mapping.get(property_type, property_type)
+                logger.info(f"🔍 Extracted property_type: {intent.property_type}")
+                break
         
         # Extract soft preferences
         intent.garage_required = any(re.search(pattern, query_lower) for pattern in self.intent_patterns['garage'])

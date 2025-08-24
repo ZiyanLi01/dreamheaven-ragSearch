@@ -12,15 +12,18 @@ class ScoringEngine:
     """Calculate scores for property listings based on search intent"""
     
     def __init__(self):
-        # Criteria weights for scoring
+        # Criteria weights for scoring - covers all must-have criteria
         self.criteria_weights = {
-            'budget': 0.25,
-            'bedrooms': 0.20,
-            'bathrooms': 0.15,
-            'garage': 0.10,
-            'metro': 0.10,
-            'property_type': 0.15,
-            'renovated': 0.05
+            'budget_sale': 0.15,      # max_price_sale
+            'budget_rent': 0.15,      # max_price_rent
+            'bedrooms': 0.15,         # min_beds
+            'bathrooms': 0.10,        # min_baths
+            'square_feet': 0.10,      # min_sqft
+            'location': 0.15,         # city, state, neighborhood
+            'garage': 0.05,           # garage_required
+            'metro': 0.05,            # walk_to_metro
+            'property_type': 0.10,    # property_type
+            'renovated': 0.05         # renovated
         }
     
     def calculate_score(self, listing: Dict[str, Any], intent) -> float:
@@ -39,10 +42,10 @@ class ScoringEngine:
             # Calculate soft preference bonus
             soft_preference_bonus = self._calculate_soft_preference_bonus(listing, intent)
             
-            # Final score: 20% similarity + 70% match percent + 10% soft preferences
+            # Final score: 50% matches + 40% semantic + 10% preference
             final_score = (
-                0.2 * similarity_score +
-                0.7 * match_percent +
+                0.5 * match_percent +
+                0.4 * similarity_score +
                 0.1 * soft_preference_bonus
             )
             
@@ -71,10 +74,10 @@ class ScoringEngine:
             # Calculate soft preference bonus
             soft_preference_bonus = self._calculate_soft_preference_bonus(listing, intent)
             
-            # Final score: 20% similarity + 70% match percent + 10% soft preferences
+            # Final score: 50% matches + 40% semantic + 10% preference
             final_score = (
-                0.2 * similarity_score +
-                0.7 * match_percent +
+                0.5 * match_percent +
+                0.4 * similarity_score +
                 0.1 * soft_preference_bonus
             )
             
@@ -105,13 +108,22 @@ class ScoringEngine:
         
         # Check each criterion
         if intent.max_price_sale:
-            total_weight += self.criteria_weights['budget']
+            total_weight += self.criteria_weights['budget_sale']
             price = listing.get('price_for_sale')
             if price is not None and price <= intent.max_price_sale:
-                matched_criteria.append('budget')
-                weighted_score += self.criteria_weights['budget']
+                matched_criteria.append('budget_sale')
+                weighted_score += self.criteria_weights['budget_sale']
             else:
-                unmatched_criteria.append('budget')
+                unmatched_criteria.append('budget_sale')
+        
+        if intent.max_price_rent:
+            total_weight += self.criteria_weights['budget_rent']
+            rent = listing.get('price_per_month')
+            if rent is not None and rent <= intent.max_price_rent:
+                matched_criteria.append('budget_rent')
+                weighted_score += self.criteria_weights['budget_rent']
+            else:
+                unmatched_criteria.append('budget_rent')
         
         if intent.min_beds:
             total_weight += self.criteria_weights['bedrooms']
@@ -130,6 +142,46 @@ class ScoringEngine:
                 weighted_score += self.criteria_weights['bathrooms']
             else:
                 unmatched_criteria.append('bathrooms')
+        
+        if intent.min_sqft:
+            total_weight += self.criteria_weights['square_feet']
+            sqft = listing.get('square_feet')
+            if sqft is not None and sqft >= intent.min_sqft:
+                matched_criteria.append('square_feet')
+                weighted_score += self.criteria_weights['square_feet']
+            else:
+                unmatched_criteria.append('square_feet')
+        
+        # Location matching (city, state, neighborhood)
+        location_matched = False
+        location_weight = self.criteria_weights['location']
+        
+        if intent.city or intent.state or intent.neighborhood:
+            total_weight += location_weight
+            
+            # Check city match
+            if intent.city:
+                listing_city = listing.get('city', '').lower()
+                if listing_city == intent.city.lower():
+                    location_matched = True
+            
+            # Check state match
+            if intent.state:
+                listing_state = listing.get('state', '').lower()
+                if listing_state == intent.state.lower():
+                    location_matched = True
+            
+            # Check neighborhood match
+            if intent.neighborhood:
+                listing_neighborhood = listing.get('neighborhood', '').lower()
+                if listing_neighborhood == intent.neighborhood.lower():
+                    location_matched = True
+            
+            if location_matched:
+                matched_criteria.append('location')
+                weighted_score += location_weight
+            else:
+                unmatched_criteria.append('location')
         
         if intent.garage_required:
             total_weight += self.criteria_weights['garage']
@@ -245,6 +297,18 @@ class ScoringEngine:
                     if any(area in address_lower for area in quiet_areas):
                         bonus += 0.03
         
+        # Check for pet-friendly in amenities
+        if intent.pet_friendly:
+            amenities = listing.get('amenities', [])
+            if isinstance(amenities, list) and any('pet' in amenity.lower() for amenity in amenities):
+                bonus += 0.08
+        
+        # Check for short-term rental
+        if intent.short_term_rental:
+            property_type = listing.get('property_listing_type', '').lower()
+            if property_type in ['rent', 'both']:
+                bonus += 0.06
+        
         return min(bonus, 0.5)  # Cap bonus at 0.5
     
     def _calculate_detailed_matches(self, listing: Dict[str, Any], intent) -> Dict[str, List[str]]:
@@ -285,6 +349,59 @@ class ScoringEngine:
             else:
                 matches['missing'].append(f"✗ Need {intent.min_baths}+ bathrooms, got {baths}")
         
+        if intent.min_sqft:
+            sqft = listing.get('square_feet')
+            if sqft is not None and sqft >= intent.min_sqft:
+                matches['structured'].append(f"✓ {sqft} sq ft (≥{intent.min_sqft})")
+            else:
+                matches['missing'].append(f"✗ Need {intent.min_sqft}+ sq ft, got {sqft}")
+        
+        # Location matching
+        if intent.city or intent.state or intent.neighborhood:
+            location_matches = []
+            location_mismatches = []
+            
+            # Get location data
+            listing_city = listing.get('city', '')
+            listing_state = listing.get('state', '')
+            listing_neighborhood = listing.get('neighborhood', '')
+            
+            # Check city and state matches
+            city_match = False
+            state_match = False
+            
+            if intent.city:
+                if listing_city and listing_city.lower() == intent.city.lower():
+                    city_match = True
+                else:
+                    location_mismatches.append(f"Looking for {intent.city}, got {listing_city}")
+            
+            if intent.state:
+                if listing_state and listing_state.lower() == intent.state.lower():
+                    state_match = True
+                else:
+                    location_mismatches.append(f"Looking for {intent.state}, got {listing_state}")
+            
+            # Combine city and state into a single location reason
+            if city_match and state_match:
+                location_matches.append(f"Located in {listing_city}, {listing_state}")
+            elif city_match:
+                location_matches.append(f"Located in {listing_city}")
+            elif state_match:
+                location_matches.append(f"Located in {listing_state}")
+            
+            # Check neighborhood match
+            if intent.neighborhood:
+                if listing_neighborhood and listing_neighborhood.lower() == intent.neighborhood.lower():
+                    location_matches.append(f"Located in {listing_neighborhood}")
+                else:
+                    location_mismatches.append(f"Looking for {intent.neighborhood}, got {listing_neighborhood}")
+            
+            if location_matches:
+                matches['structured'].extend([f"✓ {match}" for match in location_matches])
+            if location_mismatches:
+                matches['missing'].append(f"✗ Location: {', '.join(location_mismatches)}")
+        
         if intent.property_type:
             try:
                 listing_type = listing.get('property_type')
@@ -295,11 +412,19 @@ class ScoringEngine:
                 
                 listing_type = listing_type.lower()
                 if intent.property_type.lower() in listing_type or listing_type in intent.property_type.lower():
-                    matches['structured'].append(f"✓ {listing_type.title()} property type")
+                    matches['structured'].append(f"✓ {intent.property_type.title()} property type")
                 else:
                     matches['missing'].append(f"✗ Need {intent.property_type}, got {listing_type}")
             except Exception as e:
                 logger.error(f"Error in property type matching: {e}")
+        
+        # Check renovated/modern features
+        if intent.renovated or intent.modern:
+            title = listing.get('title', '').lower()
+            description = listing.get('description', '').lower()
+            if any(word in title for word in ['modern', 'updated', 'renovated', 'new']) or \
+               any(word in description for word in ['modern', 'updated', 'renovated', 'new', 'recently']):
+                matches['structured'].append("✓ Modern/renovated features")
         
         if intent.garage_required:
             garage_number = listing.get('garage_number')
@@ -317,12 +442,7 @@ class ScoringEngine:
             else:
                 matches['missing'].append(f"✗ Limited transit access (walkability: {shopping_idx}/10)")
         
-        if intent.renovated:
-            year_renovated = listing.get('year_renovated')
-            if year_renovated is not None and year_renovated >= 2020:
-                matches['structured'].append(f"✓ Recently renovated ({year_renovated})")
-            else:
-                matches['missing'].append("✗ Not recently renovated")
+        # Note: renovated/modern features are handled in the earlier section
         
         # Check semantic matches
         semantic_matches = self._analyze_semantic_matches(listing, intent)
@@ -340,29 +460,26 @@ class ScoringEngine:
         
         # Check title matches
         title = listing.get('title', '').lower()
-        if intent.property_type and intent.property_type.lower() in title:
-            matches.append(f"✓ Title mentions '{intent.property_type}'")
-        
-        if intent.renovated and any(word in title for word in ['modern', 'updated', 'renovated', 'new']):
-            matches.append("✓ Title mentions modern/renovated features")
         
         # Check description matches
         description = listing.get('description', '').lower()
-        if intent.renovated and any(word in description for word in ['modern', 'updated', 'renovated', 'new', 'recently']):
-            matches.append("✓ Description mentions modern/renovated features")
         
-        if intent.property_type and intent.property_type.lower() in description:
-            matches.append(f"✓ Description mentions '{intent.property_type}'")
-        
-        # Check location matches
+        # Check location matches in text content (only show if intent specifies location)
         address = listing.get('address', '').lower()
-        city = listing.get('city', '').lower()
-        neighborhood = listing.get('neighborhood', '').lower()
+        city = listing.get('city', '')
+        state = listing.get('state', '')
         
-        if intent.city and (intent.city.lower() in address or intent.city.lower() in city):
-            matches.append(f"✓ Located in {intent.city}")
+        # Only show location if intent specifies it and it matches
+        if intent.city and city and city.lower() == intent.city.lower():
+            if intent.state and state and state.lower() == intent.state.lower():
+                matches.append(f"✓ Located in {city}, {state}")
+            else:
+                matches.append(f"✓ Located in {city}")
+        elif intent.state and state and state.lower() == intent.state.lower():
+            matches.append(f"✓ Located in {state}")
         
-        if intent.neighborhood and intent.neighborhood.lower() in neighborhood:
+        # Check if intent criteria match in text content (for additional context)
+        if intent.neighborhood and intent.neighborhood.lower() in address:
             matches.append(f"✓ Located in {intent.neighborhood}")
         
         # Check for family-friendly indicators
@@ -370,6 +487,8 @@ class ScoringEngine:
             family_indicators = ['family', 'quiet', 'residential', 'school']
             if any(indicator in description.lower() for indicator in family_indicators):
                 matches.append("✓ Family-friendly area mentioned")
+        
+        # Note: Pet-friendly and short-term rental are handled in soft preferences to avoid duplicates
         
         return matches
     
@@ -419,6 +538,39 @@ class ScoringEngine:
                 address = listing.get('address', '').lower()
                 if any(area in address for area in quiet_areas):
                     matches.append("✓ Quiet residential area")
+        
+        # Check for pet-friendly in amenities
+        if intent.pet_friendly:
+            amenities = listing.get('amenities', [])
+            if isinstance(amenities, list) and any('pet' in amenity.lower() for amenity in amenities):
+                matches.append("✓ Pet-friendly property")
+        
+        # Check for short-term rental
+        if intent.short_term_rental:
+            property_type = listing.get('property_listing_type', '').lower()
+            if property_type in ['rent', 'both']:
+                matches.append("✓ Short-term rental available")
+        
+        # Check for mountain view
+        if intent.mountain_view:
+            mountain_areas = ['twin peaks', 'diamond heights', 'bernal heights', 'glen park']
+            address = listing.get('address', '').lower()
+            if any(area in address for area in mountain_areas):
+                matches.append("✓ Mountain view area")
+        
+        # Check for dining options
+        if intent.dining_options:
+            dining_indicators = ['restaurant', 'cafe', 'dining', 'food']
+            description = listing.get('description', '').lower()
+            if any(indicator in description for indicator in dining_indicators):
+                matches.append("✓ Dining options nearby")
+        
+        # Check for walk to metro (separate from walkable)
+        if intent.walk_to_metro:
+            transit_indicators = ['metro', 'bart', 'subway', 'transit', 'train']
+            description = listing.get('description', '').lower()
+            if any(indicator in description for indicator in transit_indicators):
+                matches.append("✓ Walk to metro/transit")
         
         return matches
     
