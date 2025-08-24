@@ -39,10 +39,10 @@ class ScoringEngine:
             # Calculate soft preference bonus
             soft_preference_bonus = self._calculate_soft_preference_bonus(listing, intent)
             
-            # Final score: 70% similarity + 20% match percent + 10% soft preferences
+            # Final score: 20% similarity + 70% match percent + 10% soft preferences
             final_score = (
-                0.7 * similarity_score +
-                0.2 * match_percent +
+                0.2 * similarity_score +
+                0.7 * match_percent +
                 0.1 * soft_preference_bonus
             )
             
@@ -71,10 +71,10 @@ class ScoringEngine:
             # Calculate soft preference bonus
             soft_preference_bonus = self._calculate_soft_preference_bonus(listing, intent)
             
-            # Final score: 70% similarity + 20% match percent + 10% soft preferences
+            # Final score: 20% similarity + 70% match percent + 10% soft preferences
             final_score = (
-                0.7 * similarity_score +
-                0.2 * match_percent +
+                0.2 * similarity_score +
+                0.7 * match_percent +
                 0.1 * soft_preference_bonus
             )
             
