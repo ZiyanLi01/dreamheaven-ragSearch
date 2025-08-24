@@ -24,6 +24,7 @@ class SearchIntent:
     min_sqft: Optional[int] = None
     garage_required: bool = False
     property_type: Optional[str] = None
+    listing_type: Optional[str] = None  # 'rent', 'sale', or None
     
     # Soft preferences (for reranking)
     good_schools: bool = False
@@ -111,6 +112,18 @@ class IntentExtractor:
             ],
             'property_type': [
                 r'\b(condo|apartment|apartments|house|houses|townhouse|townhouses|single family|multi family|duplex|duplexes|loft|lofts|studio|studios)\b'
+            ],
+            
+            # Listing type (rent/sale)
+            'listing_type': [
+                r'\bfor\s+rent\b',
+                r'\brental\b',
+                r'\brenting\b',
+                r'\bto\s+rent\b',
+                r'\bfor\s+sale\b',
+                r'\bbuying\b',
+                r'\bto\s+buy\b',
+                r'\bpurchase\b'
             ],
             
             # Soft preferences
@@ -326,6 +339,18 @@ class IntentExtractor:
                 intent.property_type = property_type_mapping.get(property_type, property_type)
                 logger.info(f"🔍 Extracted property_type: {intent.property_type}")
                 break
+        
+        # Extract listing type (rent/sale)
+        for pattern in self.intent_patterns['listing_type']:
+            if re.search(pattern, query_lower):
+                if any(word in query_lower for word in ['for rent', 'rental', 'renting', 'to rent']):
+                    intent.listing_type = 'rent'
+                    logger.info(f"🔍 Extracted listing_type: {intent.listing_type}")
+                    break
+                elif any(word in query_lower for word in ['for sale', 'buying', 'to buy', 'purchase']):
+                    intent.listing_type = 'sale'
+                    logger.info(f"🔍 Extracted listing_type: {intent.listing_type}")
+                    break
         
         # Extract soft preferences
         intent.garage_required = any(re.search(pattern, query_lower) for pattern in self.intent_patterns['garage'])

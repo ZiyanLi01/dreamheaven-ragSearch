@@ -14,15 +14,16 @@ class ScoringEngine:
     def __init__(self):
         # Criteria weights for scoring - covers all must-have criteria
         self.criteria_weights = {
-            'budget_sale': 0.15,      # max_price_sale
-            'budget_rent': 0.15,      # max_price_rent
-            'bedrooms': 0.15,         # min_beds
-            'bathrooms': 0.10,        # min_baths
-            'square_feet': 0.10,      # min_sqft
-            'location': 0.15,         # city, state, neighborhood
+            'budget_sale': 0.12,      # max_price_sale
+            'budget_rent': 0.12,      # max_price_rent
+            'bedrooms': 0.12,         # min_beds
+            'bathrooms': 0.08,        # min_baths
+            'square_feet': 0.08,      # min_sqft
+            'location': 0.12,         # city, state, neighborhood
             'garage': 0.05,           # garage_required
             'metro': 0.05,            # walk_to_metro
-            'property_type': 0.10,    # property_type
+            'property_type': 0.08,    # property_type
+            'listing_type': 0.08,     # listing_type (rent/sale)
             'renovated': 0.05         # renovated
         }
     
@@ -229,6 +230,16 @@ class ScoringEngine:
                 # Continue without property_type matching
                 pass
         
+        # Listing type matching (rent/sale)
+        if intent.listing_type:
+            total_weight += self.criteria_weights['listing_type']
+            listing_property_type = listing.get('property_listing_type', '').lower()
+            if listing_property_type and intent.listing_type.lower() == listing_property_type:
+                matched_criteria.append('listing_type')
+                weighted_score += self.criteria_weights['listing_type']
+            else:
+                unmatched_criteria.append('listing_type')
+        
         # Renovated matching
         if intent.renovated:
             renovated_weight = 0.05
@@ -417,6 +428,14 @@ class ScoringEngine:
                     matches['missing'].append(f"✗ Need {intent.property_type}, got {listing_type}")
             except Exception as e:
                 logger.error(f"Error in property type matching: {e}")
+        
+        # Check listing type (rent/sale)
+        if intent.listing_type:
+            listing_property_type = listing.get('property_listing_type', '').lower()
+            if listing_property_type and intent.listing_type.lower() == listing_property_type:
+                matches['structured'].append(f"✓ {intent.listing_type.title()} property")
+            else:
+                matches['missing'].append(f"✗ Need {intent.listing_type} property, got {listing_property_type}")
         
         # Check renovated/modern features
         if intent.renovated or intent.modern:
