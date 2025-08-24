@@ -1,16 +1,11 @@
-#!/usr/bin/env python3
-"""
-Test simple query that should trigger rule-based scoring
-"""
-
 import asyncio
 import aiohttp
 import json
 
-async def test_simple_query():
+async def test_query():
     url = "http://localhost:8001/ai-search"
     payload = {
-        "query": "Show me apartments in San Francisco",
+        "query": "Find me a renovated condo near a BART station with parking.",
         "limit": 5,
         "reasons": True
     }
@@ -19,12 +14,12 @@ async def test_simple_query():
         async with session.post(url, json=payload) as response:
             if response.status == 200:
                 result = await response.json()
-                print("=== SIMPLE QUERY TEST RESULTS ===")
+                print("=== QUERY TEST RESULTS ===")
                 print(f"Query: {payload['query']}")
                 print(f"What You Need: {result.get('what_you_need', 'N/A')}")
                 print(f"Results count: {len(result.get('items', []))}")
                 
-                if result.get('items') and result['items'][0].get('id') != 'no_results':
+                if result.get('items'):
                     print("\n=== TOP 3 RESULTS ===")
                     for i, item in enumerate(result['items'][:3]):
                         print(f"{i+1}. {item.get('title', 'N/A')}")
@@ -33,12 +28,10 @@ async def test_simple_query():
                         print(f"   Score: {item.get('similarity_score', 'N/A'):.2%}")
                         print(f"   Reason: {item.get('reason', 'N/A')}")
                         print()
-                else:
-                    print("No results found")
             else:
                 print(f"Error: {response.status}")
                 error_text = await response.text()
                 print(f"Error details: {error_text}")
 
 if __name__ == "__main__":
-    asyncio.run(test_simple_query())
+    asyncio.run(test_query())
