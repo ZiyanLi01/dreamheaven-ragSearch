@@ -16,7 +16,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY main.py .
-COPY embed_listings.py .
+COPY search_engine.py .
+COPY database.py .
+COPY models.py .
+COPY config.py .
+COPY intent_extractor.py .
+COPY scoring.py .
+COPY scripts/ ./scripts/
+COPY etl/ ./etl/
+COPY config/ ./config/
 
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app

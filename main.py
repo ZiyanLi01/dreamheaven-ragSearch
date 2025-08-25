@@ -70,12 +70,18 @@ app = FastAPI(
 )
 
 # CORS middleware
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "https://dreamheaven.vercel.app")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=[
+        "http://localhost:3000",  # React dev server
+
+        FRONTEND_ORIGIN,  # Production frontend from environment variable
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type"],
 )
 
 # Dependency to get database connection
