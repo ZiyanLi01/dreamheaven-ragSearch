@@ -76,7 +76,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",  # React dev server
-
+        "https://www.nestvector.com",  # Your custom domain
+        "https://nestvector.com",  # Also allow without www
         FRONTEND_ORIGIN,  # Production frontend from environment variable
     ],
     allow_credentials=True,
