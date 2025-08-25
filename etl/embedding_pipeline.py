@@ -158,7 +158,7 @@ class EmbeddingPipelineETL:
                     else:
                         results['successful'] += 1
                     
-                    logger.info(f"✅ Processed listing {listing_id} ({i+1}/{len(listings)})")
+                    logger.info(f"Processed listing {listing_id} ({i+1}/{len(listings)})")
                     logger.debug(f"   Text length: {len(embedding_text)} chars")
                     logger.debug(f"   Tags: {len(tag_objects)} tags")
                     
@@ -166,7 +166,7 @@ class EmbeddingPipelineETL:
                     results['failed'] += 1
                     error_msg = f"Failed to generate embedding for listing {listing_id}"
                     results['errors'].append(error_msg)
-                    logger.warning(f"❌ {error_msg}")
+                    logger.warning(f"Error: {error_msg}")
                 
                 results['processed'] += 1
                 
@@ -177,7 +177,7 @@ class EmbeddingPipelineETL:
                 results['failed'] += 1
                 error_msg = f"Error processing listing {listing.get('id', f'listing_{i}')}: {e}"
                 results['errors'].append(error_msg)
-                logger.error(f"❌ {error_msg}")
+                logger.error(f"Error: {error_msg}")
                 continue
         
         return results
@@ -224,9 +224,9 @@ def main():
             print(f"   Dimensions: {len(embedding_vector)}")
             print(f"   Sample values: {embedding_vector[:5]}...")
         else:
-            print("   ❌ Failed to generate embedding")
+            print("   Failed to generate embedding")
         
-        print(f"\n🏷️  Structured Tags ({len(tag_objects)} tags):")
+        print(f"\nStructured Tags ({len(tag_objects)} tags):")
         for tag in tag_objects:
             print(f"   • {tag['tag']}: {tag['evidence']}")
         

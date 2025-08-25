@@ -51,6 +51,21 @@ class IntentExtractor:
     """Extract structured search intent from natural language queries"""
     
     def __init__(self):
+        # District to neighborhood mapping for enhanced matching
+        self.district_to_neighborhoods = {
+            'central': ['civic center', 'downtown', 'union square', 'tenderloin', 'soma', 'south of market', 'tendernob', 'south beach', 'yerba buena'],
+            'financial district': ['financial district', 'chinatown', 'nob hill', 'north beach', 'russian hill', 'telegraph hill'],
+            'marina': ['marina', 'pacific heights', 'cow hollow', 'presidio', 'presidio heights'],
+            'western addition': ['alamo square', 'anza vista', 'cathedral hill', 'fillmore', 'japantown', 'western addition', 'hayes valley'],
+            'haight': ['buena vista', 'castro', 'corona heights', 'duboce triangle', 'haight-ashbury', 'noe valley'],
+            'mission': ['mission', 'potrero hill', 'dogpatch', 'mission bay', 'mission dolores'],
+            'south central': ['bernal heights', 'diamond heights', 'glen park', 'twin peaks'],
+            'west of twin peaks': ['balboa terrace', 'forest hill', 'forest knolls', 'ingleside', 'ingleside terraces', 'miraloma park', 'monterey heights', 'mt. davidson manor', 'st. francis wood', 'sunnyside', 'westwood highlands', 'westwood park'],
+            'richmond': ['richmond', 'lake street', 'laurel heights', 'sea cliff'],
+            'sunset': ['sunset', 'parkside'],
+            'southeastern': ['bayview-hunters point', 'crocker-amazon', 'excelsior', 'little hollywood', 'mclaren park', 'oceanview', 'silver terrace', 'visitacion valley', 'hunters point', 'india basin']
+        }
+        
         # Intent extraction patterns
         self.intent_patterns = {
             # Cities and states
@@ -59,9 +74,14 @@ class IntentExtractor:
                 r'\b(california|ca|new york|ny|texas|tx|florida|fl|illinois|il|washington|wa|massachusetts|ma|colorado|co|oregon|or|georgia|ga|arizona|az|nevada|nv|pennsylvania|pa|virginia|va)\b'
             ],
             
-            # Neighborhoods
+            # Enhanced neighborhoods with comprehensive SF neighborhoods and district aliases
             'neighborhood': [
-                r'\b(nob hill|mission district|marina|pacific heights|russian hill|presidio heights|hayes valley|soma|financial district|castro|noe valley|bernal heights|glen park|inner sunset|outer sunset|richmond|sunset|twin peaks|downtown|uptown|midtown|west village|east village|chelsea|soho|tribeca|brooklyn heights|williamsburg|park slope|astoria|long island city|queens|manhattan|brooklyn|bronx|staten island)\b'
+                # Full neighborhood names (comprehensive list)
+                r'\b(civic center|downtown|union square|tenderloin|soma|south of market|chinatown|financial district|nob hill|north beach|russian hill|telegraph hill|cow hollow|marina|pacific heights|presidio|presidio heights|alamo square|anza vista|cathedral hill|fillmore|japantown|western addition|hayes valley|buena vista|castro|corona heights|duboce triangle|haight-ashbury|noe valley|mission|potrero hill|dogpatch|mission bay|mission dolores|bernal heights|diamond heights|glen park|twin peaks|balboa terrace|forest hill|forest knolls|ingleside|ingleside terraces|miraloma park|monterey heights|mt\. davidson manor|st\. francis wood|sunnyside|westwood highlands|westwood park|richmond|lake street|laurel heights|sea cliff|sunset|parkside|bayview-hunters point|crocker-amazon|excelsior|little hollywood|mclaren park|oceanview|silver terrace|visitacion valley|tendernob|south beach|yerba buena|hunters point|india basin)\b',
+                # District aliases and common variations
+                r'\b(marina district|pacific heights|nob hill|chinatown|financial|soma|tenderloin|downtown|union square|civic center|north beach|russian hill|telegraph hill|cow hollow|presidio|presidio heights|alamo square|anza vista|cathedral hill|fillmore district|japantown|western addition|buena vista|castro|corona heights|duboce triangle|haight|ashbury|noe valley|mission district|potrero hill|bernal heights|diamond heights|glen park|twin peaks|balboa terrace|forest hill|forest knolls|ingleside terraces|miraloma|monterey heights|st\. francis wood|sunnyside|westwood|richmond district|sunset district|bayview|hunters point|crocker|amazon|excelsior|little hollywood|mclaren|oceanview|silver terrace|visitacion)\b',
+                # District names
+                r'\b(central|financial district|marina|western addition|haight|mission district|south central|west of twin peaks|richmond district|sunset district|southeastern)\b'
             ],
             
             # Price ranges
@@ -252,6 +272,43 @@ class IntentExtractor:
             ]
         }
     
+    def _normalize_neighborhood(self, neighborhood: str) -> str:
+        """Normalize neighborhood name and handle district mappings"""
+        neighborhood_lower = neighborhood.lower()
+        
+        # Check if it's a district name and map to primary neighborhood
+        for district, neighborhoods in self.district_to_neighborhoods.items():
+            if district in neighborhood_lower or neighborhood_lower in district:
+                # Return the first neighborhood as the primary one
+                return neighborhoods[0]
+        
+        # Handle common variations
+        variations = {
+            'soma': 'south of market',
+            'haight': 'haight-ashbury',
+            'ashbury': 'haight-ashbury',
+            'bayview': 'bayview-hunters point',
+            'hunters point': 'bayview-hunters point',
+            'crocker': 'crocker-amazon',
+            'amazon': 'crocker-amazon',
+            'mt. davidson': 'mt. davidson manor',
+            'st. francis': 'st. francis wood',
+            'westwood': 'westwood highlands',
+            'marina district': 'marina',
+            'fillmore district': 'fillmore',
+            'mission district': 'mission',
+            'richmond district': 'richmond',
+            'sunset district': 'sunset',
+            'mclaren': 'mclaren park',
+            'ingleside terraces': 'ingleside'
+        }
+        
+        for variation, standard in variations.items():
+            if variation in neighborhood_lower:
+                return standard
+        
+        return neighborhood_lower
+    
     def extract_intent(self, query: str) -> SearchIntent:
         """Extract structured search intent from natural language query"""
         query_lower = query.lower()
@@ -272,19 +329,23 @@ class IntentExtractor:
                 else:
                     intent.city = match
         
-        # Extract neighborhood
+        # Extract neighborhood with enhanced matching
         for pattern in self.intent_patterns['neighborhood']:
             matches = re.findall(pattern, query_lower)
             if matches:
-                intent.neighborhood = matches[0]
-                logger.info(f"🔍 Extracted neighborhood: {intent.neighborhood}")
+                neighborhood = matches[0]
+                # Normalize the neighborhood name
+                normalized_neighborhood = self._normalize_neighborhood(neighborhood)
+                intent.neighborhood = normalized_neighborhood
+                logger.info(f"Extracted neighborhood: {intent.neighborhood} (from: {neighborhood})")
+                break
         
         # Extract price ranges - check rent first to avoid conflicts
         for pattern in self.intent_patterns['price_rent']:
             matches = re.findall(pattern, query_lower)
             if matches:
                 intent.max_price_rent = float(matches[0].replace(',', ''))
-                logger.info(f"🔍 Extracted max_price_rent: {intent.max_price_rent}")
+                logger.info(f"Extracted max_price_rent: {intent.max_price_rent}")
                 break
         
         # Only check sale patterns if no rent pattern matched
@@ -311,14 +372,14 @@ class IntentExtractor:
             matches = re.findall(pattern, query_lower)
             if matches:
                 intent.min_baths = int(matches[0])
-                logger.info(f"🔍 Extracted min_baths: {intent.min_baths}")
+                logger.info(f"Extracted min_baths: {intent.min_baths}")
         
         # Extract square footage
         for pattern in self.intent_patterns['sqft']:
             matches = re.findall(pattern, query_lower)
             if matches:
                 intent.min_sqft = int(matches[0].replace(',', ''))
-                logger.info(f"🔍 Extracted min_sqft: {intent.min_sqft}")
+                logger.info(f"Extracted min_sqft: {intent.min_sqft}")
                 break
         
         # Extract property type
@@ -337,7 +398,7 @@ class IntentExtractor:
                     'studios': 'studio'
                 }
                 intent.property_type = property_type_mapping.get(property_type, property_type)
-                logger.info(f"🔍 Extracted property_type: {intent.property_type}")
+                logger.info(f"Extracted property_type: {intent.property_type}")
                 break
         
         # Extract listing type (rent/sale)
@@ -345,11 +406,11 @@ class IntentExtractor:
             if re.search(pattern, query_lower):
                 if any(word in query_lower for word in ['for rent', 'rental', 'renting', 'to rent']):
                     intent.listing_type = 'rent'
-                    logger.info(f"🔍 Extracted listing_type: {intent.listing_type}")
+                    logger.info(f"Extracted listing_type: {intent.listing_type}")
                     break
                 elif any(word in query_lower for word in ['for sale', 'buying', 'to buy', 'purchase']):
                     intent.listing_type = 'sale'
-                    logger.info(f"🔍 Extracted listing_type: {intent.listing_type}")
+                    logger.info(f"Extracted listing_type: {intent.listing_type}")
                     break
         
         # Extract soft preferences

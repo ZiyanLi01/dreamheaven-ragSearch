@@ -30,18 +30,26 @@ class SupabaseManager:
         logger.info("Supabase client initialized")
     
     def get_listings(self, limit: int = None, offset: int = 0) -> list:
-        """Get listings from the database"""
+        """Get listings from the database.
+
+        If limit is None, fetches ALL listings using pagination (batches of 1000).
+        If limit is provided, returns a single page starting at offset.
+        """
         try:
+            # Single-call fetch for all listings when limit is None (use a high limit)
+            if limit is None:
+                result = self.client.table("listings_v2").select("*").limit(100000).execute()
+                return result.data if result.data else []
+
+            # Otherwise fetch a single page
             query = self.client.table("listings_v2").select("*")
-            
             if offset > 0:
-                query = query.range(offset, offset + limit - 1) if limit else query.range(offset, offset + 999)
-            elif limit:
+                query = query.range(offset, offset + limit - 1)
+            else:
                 query = query.limit(limit)
-            
             result = query.execute()
             return result.data if result.data else []
-            
+
         except Exception as e:
             logger.error(f"Error fetching listings: {e}")
             return []
