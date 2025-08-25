@@ -17,7 +17,7 @@ class Config:
         
         # Validate required environment variables
         if not self.DATABASE_URL or not self.OPENAI_API_KEY:
-            raise ValueError("DATABASE_URL and OPENAI_API_KEY must be set in environment variables")
+            raise ValueError("DATABASE_URL and OPENAI_API_KEY must be set in environment variables. Please add them in Railway dashboard under Variables tab.")
     
     @property
     def database_url(self) -> str:

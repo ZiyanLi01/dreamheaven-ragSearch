@@ -11,8 +11,7 @@ Set these in your cloud platform (Railway, Heroku, AWS, etc.):
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_ANON_KEY=your-supabase-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
-DATABASE_URL=postgresql://postgres.your-project-ref:your-password@aws-0-us-east-1.pooler.supabase.com:6543/postgres
-
+DATABASE_URL=postgresql://postgres.wmolhwclvmtepgucujsy:RNUQUVt5Ge1rC1qy@aws-0-us-west-1.pooler.supabase.com:6543/postgres
 # OpenAI API
 OPENAI_API_KEY=your-openai-api-key
 
