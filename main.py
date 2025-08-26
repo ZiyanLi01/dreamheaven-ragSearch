@@ -70,12 +70,13 @@ app = FastAPI(
 )
 
 # CORS middleware
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "https://dreamheaven.vercel.app")
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "https://dreamheaven-frontend.vercel.app")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",  # React dev server
+        "http://localhost:3000", 
+        "https://dreamheaven-frontend.vercel.app",
         "https://www.nestvector.com",  # Your custom domain
         "https://nestvector.com",  # Also allow without www
         FRONTEND_ORIGIN,  # Production frontend from environment variable
