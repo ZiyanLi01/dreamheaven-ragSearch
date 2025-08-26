@@ -77,6 +77,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000", 
         "https://dreamheaven-frontend.vercel.app",
+        "https://www.nestvector.com",
+        "https://nestvector.com",
         FRONTEND_ORIGIN
     ],
     allow_credentials=True,
