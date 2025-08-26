@@ -77,9 +77,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000", 
         "https://dreamheaven-frontend.vercel.app",
-        "https://www.nestvector.com",  # Your custom domain
-        "https://nestvector.com",  # Also allow without www
-        FRONTEND_ORIGIN,  # Production frontend from environment variable
+        FRONTEND_ORIGIN
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
