@@ -70,17 +70,12 @@ app = FastAPI(
 )
 
 # CORS middleware
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "https://dreamheaven-frontend.vercel.app")
+origins_string = os.getenv("FRONTEND_ORIGINS", "http://localhost:3000,https://dreamheaven-frontend.vercel.app,https://www.nestvector.com,https://nestvector.com")
+FRONTEND_ORIGINS = [origin.strip() for origin in origins_string.split(",") if origin.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000", 
-        "https://dreamheaven-frontend.vercel.app",
-        "https://www.nestvector.com",
-        "https://nestvector.com",
-        FRONTEND_ORIGIN
-    ],
+    allow_origins=FRONTEND_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
